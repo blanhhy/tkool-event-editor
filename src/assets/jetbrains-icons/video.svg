@@ -1,0 +1,5 @@
+<!-- Simple film/video glyph, drawn to match the 16px gray JetBrains expui style. -->
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="1.5" y="3.5" width="13" height="9" rx="1.5" stroke="#CED0D6"/>
+<path d="M6.8 6.2L10 8L6.8 9.8V6.2Z" fill="#CED0D6"/>
+</svg>

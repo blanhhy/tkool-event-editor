@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { listDirectory, type DirEntry } from '../lib/fs';
 import ContextMenu from './ContextMenu';
 import FileTypeIcon from './FileTypeIcon';
-import { ChevronIcon, FolderIcon, FolderOpenIcon } from './icons';
+import { ChevronIcon } from './icons';
 
 function copyPath(path: string) {
   if (!navigator.clipboard) return;
@@ -229,15 +229,7 @@ function TreeRow({
         ) : (
           <span className="chevronPlaceholder" />
         )}
-        {isDir ? (
-          expanded ? (
-            <FolderOpenIcon size={16} className="treeIcon" />
-          ) : (
-            <FolderIcon size={16} className="treeIcon" />
-          )
-        ) : (
-          <FileTypeIcon name={entry.name} size={16} />
-        )}
+        <FileTypeIcon name={entry.name} kind={isDir ? 'directory' : 'file'} size={16} />
         <span className="treeLabel" title={path}>
           {entry.name}
         </span>

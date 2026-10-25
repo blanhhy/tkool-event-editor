@@ -36,7 +36,7 @@ import {
   type DirEntry,
   type ProjectStats,
 } from './lib/fs';
-import { ENCODINGS, readGameTitle, readProjectInfo, type Encoding } from './lib/project';
+import { DEFAULT_ENCODING, ENCODINGS, normalizeEncoding, readGameTitle, readProjectInfo, type Encoding } from './lib/project';
 import { saveRecentProject, type RecentProject } from './lib/recent';
 
 const DEFAULT_PANEL_WIDTH = 248;
@@ -50,7 +50,7 @@ function isUserCancellation(err: unknown): boolean {
 export default function App() {
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
   const [title, setTitle] = useState<string | null>(null);
-  const [encoding, setEncoding] = useState<Encoding>('shift_jis');
+  const [encoding, setEncoding] = useState<Encoding>(DEFAULT_ENCODING);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -93,7 +93,7 @@ export default function App() {
 
         const config = await readProjectConfig(handle);
         const info = await readProjectInfo(handle);
-        const nextEncoding = preferred ?? config?.encoding ?? info.encoding;
+        const nextEncoding = normalizeEncoding(preferred) ?? config?.encoding ?? info.encoding;
         const nextTitle = (await readGameTitle(handle, nextEncoding)) ?? info.title;
 
         closeAllTabs();
@@ -160,7 +160,7 @@ export default function App() {
     closeAllTabs();
     setRoot(null);
     setTitle(null);
-    setEncoding('shift_jis');
+    setEncoding(DEFAULT_ENCODING);
     setStats(null);
     setSelected(null);
     setError(null);

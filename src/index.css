@@ -725,18 +725,12 @@ button {
   transform: rotate(90deg);
 }
 
-.treeIcon {
-  flex: 0 0 auto;
-  color: var(--color-text-muted);
-}
-
-.treeRow[data-kind='directory'] .treeIcon {
-  color: var(--color-primary);
-}
-
 .fileTypeIcon {
   flex: 0 0 auto;
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .fileTypeIcon svg {

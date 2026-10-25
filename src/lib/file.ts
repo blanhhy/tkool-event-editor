@@ -1,4 +1,4 @@
-import type { Encoding } from './project';
+import { decoderFor, type Encoding } from './project';
 
 export type FileKind = 'text' | 'image' | 'audio' | 'lcf' | 'other';
 
@@ -70,7 +70,7 @@ export interface DecodedText {
  */
 export function decodeText(bytes: ArrayBuffer, fallback: Encoding): DecodedText {
   try {
-    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), encoding: 'utf-8', editable: true };
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), encoding: '65001', editable: true };
   } catch {
     return decodeTextAs(bytes, fallback);
   }
@@ -79,9 +79,9 @@ export function decodeText(bytes: ArrayBuffer, fallback: Encoding): DecodedText 
 /** 按指定编码解码指定文件（用户手动选择的文件编码） */
 export function decodeTextAs(bytes: ArrayBuffer, encoding: Encoding): DecodedText {
   return {
-    text: new TextDecoder(encoding).decode(bytes),
+    text: new TextDecoder(decoderFor(encoding)).decode(bytes),
     encoding,
-    editable: encoding === 'utf-8',
+    editable: encoding === '65001',
   };
 }
 

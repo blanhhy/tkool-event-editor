@@ -1,5 +1,5 @@
 import { ensureWritePermission } from './fs';
-import { ENCODINGS, type Encoding } from './project';
+import { DEFAULT_ENCODING, ENCODINGS, normalizeEncoding, type Encoding } from './project';
 
 export const CONFIG_NAME = 'RPG_RT.json';
 
@@ -8,17 +8,16 @@ export interface ProjectConfig {
   encoding: Encoding;
 }
 
-function isEncoding(value: unknown): value is Encoding {
-  return ENCODINGS.some((item) => item.value === value);
-}
-
 export async function readProjectConfig(root: FileSystemDirectoryHandle): Promise<ProjectConfig | null> {
   try {
     const file = await (await root.getFileHandle(CONFIG_NAME)).getFile();
     const data: unknown = JSON.parse(await file.text());
     if (typeof data !== 'object' || data === null) return null;
-    const encoding = (data as { encoding?: unknown }).encoding;
-    return { version: 1, encoding: isEncoding(encoding) ? encoding : 'shift_jis' };
+    const encoding = normalizeEncoding((data as { encoding?: unknown }).encoding);
+    return {
+      version: 1,
+      encoding: encoding && ENCODINGS.some((item) => item.value === encoding) ? encoding : DEFAULT_ENCODING,
+    };
   } catch {
     return null;
   }
