@@ -30,7 +30,6 @@ import {
 import {
   canPickDirectory,
   copyEntry,
-  countProject,
   deleteEntry,
   ensureReadPermission,
   ensureWritePermission,
@@ -39,7 +38,6 @@ import {
   renameEntry,
   splitPath,
   type DirEntry,
-  type ProjectStats,
   type TreeClipboard,
 } from './lib/fs';
 import { DEFAULT_ENCODING, ENCODINGS, normalizeEncoding, readGameTitle, readProjectInfo, type Encoding } from './lib/project';
@@ -57,7 +55,6 @@ export default function App() {
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
   const [title, setTitle] = useState<string | null>(null);
   const [encoding, setEncoding] = useState<Encoding>(DEFAULT_ENCODING);
-  const [stats, setStats] = useState<ProjectStats | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,13 +107,8 @@ export default function App() {
         setEncoding(nextEncoding);
         setTitle(nextTitle);
         setSelected(null);
-        setStats(null);
         setClipboard(null);
         setRenamingPath(null);
-
-        void countProject(handle).then((nextStats) => {
-          if (activationRef.current === token) setStats(nextStats);
-        });
 
         await saveRecentProject({
           id: handle.name,
@@ -171,7 +163,6 @@ export default function App() {
     setRoot(null);
     setTitle(null);
     setEncoding(DEFAULT_ENCODING);
-    setStats(null);
     setSelected(null);
     setClipboard(null);
     setRenamingPath(null);
@@ -876,13 +867,6 @@ export default function App() {
           <span className="statusDot" data-on={root ? 'true' : 'false'} />
           {root ? `已打开 ${title ?? root.name}` : '未打开工程'}
         </div>
-        {root && (
-          <div className="statusItem">
-            {stats
-              ? `${stats.files.toLocaleString('zh-CN')} 个文件 · ${stats.dirs.toLocaleString('zh-CN')} 个文件夹`
-              : '正在统计…'}
-          </div>
-        )}
         {activeTabData?.kind === 'text' && !activeTabData.editable && (
           <div className="statusItem">只读</div>
         )}

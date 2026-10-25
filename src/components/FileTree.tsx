@@ -15,6 +15,26 @@ function sameEntries(prev: DirEntry[] | null, next: DirEntry[]): boolean {
   return prev.every((entry, index) => entry.name === next[index].name && entry.kind === next[index].kind);
 }
 
+/**
+ * 同一目录同一时刻只跑一次读取。
+ * 并行遍历同一个目录句柄在部分浏览器（含内置浏览器）里会让后发起的遍历一直挂起，
+ * 而 StrictMode 的双次 effect 恰好会制造这种并行读取。
+ */
+const pendingLoads = new WeakMap<FileSystemDirectoryHandle, Promise<DirEntry[]>>();
+
+function loadDirectory(handle: FileSystemDirectoryHandle): Promise<DirEntry[]> {
+  const pending = pendingLoads.get(handle);
+  if (pending) return pending;
+
+  const promise = listDirectory(handle);
+  pendingLoads.set(handle, promise);
+  const clear = () => {
+    if (pendingLoads.get(handle) === promise) pendingLoads.delete(handle);
+  };
+  promise.then(clear, clear);
+  return promise;
+}
+
 export interface TreeActions {
   clipboard: TreeClipboard | null;
   renamingPath: string | null;
@@ -83,7 +103,7 @@ export default function FileTree({
     setError(null);
     setLoading(true);
 
-    listDirectory(root)
+    loadDirectory(root)
       .then((list) => {
         if (!cancelled) setEntries((prev) => (sameEntries(prev, list) ? prev : list));
       })
@@ -215,7 +235,7 @@ function TreeRow({
 
     let cancelled = false;
     // 静默刷新子项：不显示「读取中」，也不替换未变化的数组，避免列表闪烁
-    listDirectory(entry.handle as FileSystemDirectoryHandle)
+    loadDirectory(entry.handle as FileSystemDirectoryHandle)
       .then((list) => {
         if (!cancelled) setChildren((prev) => (sameEntries(prev, list) ? prev : list));
       })
@@ -245,7 +265,7 @@ function TreeRow({
     setLoading(true);
     setError(null);
     try {
-      setChildren(await listDirectory(entry.handle as FileSystemDirectoryHandle));
+      setChildren(await loadDirectory(entry.handle as FileSystemDirectoryHandle));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '读取目录失败');
     } finally {

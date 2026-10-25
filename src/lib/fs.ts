@@ -4,12 +4,6 @@ export interface DirEntry {
   handle: FileSystemHandle;
 }
 
-export interface ProjectStats {
-  files: number;
-  dirs: number;
-  truncated: boolean;
-}
-
 type PickerWindow = Window & {
   showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>;
 };
@@ -241,26 +235,4 @@ export async function deleteEntry(root: FileSystemDirectoryHandle, path: string)
   const { dir: dirPath, name } = splitPath(path);
   const dir = await resolveDirectory(root, dirPath);
   await dir.removeEntry(name, { recursive: true });
-}
-
-/** 递归统计工程内的文件 / 文件夹数量，避免超大工程把页面卡住 */
-export async function countProject(root: FileSystemDirectoryHandle, limit = 20000): Promise<ProjectStats> {
-  let files = 0;
-  let dirs = 0;
-  const stack: FileSystemDirectoryHandle[] = [root];
-
-  while (stack.length > 0 && files + dirs < limit) {
-    const current = stack.pop() as FileSystemDirectoryHandle;
-    for await (const [, handle] of iteratorOf(current)) {
-      if (handle.kind === 'directory') {
-        dirs += 1;
-        stack.push(handle as FileSystemDirectoryHandle);
-      } else {
-        files += 1;
-      }
-      if (files + dirs >= limit) break;
-    }
-  }
-
-  return { files, dirs, truncated: files + dirs >= limit };
 }
