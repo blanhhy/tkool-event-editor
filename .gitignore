@@ -1,0 +1,10 @@
+.tmp/
+.reference/
+.screenshots/
+node_modules/
+dist/
+
+index*.zip
+dist*.zip
+
+*.log
