@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, type DragEvent, type MutableRefObject } from 'react';
 import { formatBytes, kindLabel, type FileKind } from '../lib/file';
-import type { CommandLine } from '../lib/eventCommands';
+import type { CommandLine, TextBlockKind } from '../lib/eventCommands';
 import type { EventPageRef } from '../lib/events';
 import type { Encoding } from '../lib/project';
 import EventPageView from './EventPageView';
@@ -40,7 +40,12 @@ interface Props {
   onDropFile: (path: string) => void;
   onCursorChange: (line: number, column: number) => void;
   editorApiRef: MutableRefObject<TextEditorApi | null>;
-  onSaveComment?: (tab: EditorTab, lines: CommandLine[], text: string) => void;
+  onSaveTextBlock?: (
+    tab: EditorTab,
+    kind: TextBlockKind,
+    lines: CommandLine[],
+    text: string,
+  ) => void;
 }
 
 const DRAG_TYPE = 'application/x-tkool-file';
@@ -55,7 +60,7 @@ export default function EditorArea({
   onDropFile,
   onCursorChange,
   editorApiRef,
-  onSaveComment,
+  onSaveTextBlock,
 }: Props) {
   const active = tabs.find((tab) => tab.path === activeId) ?? null;
   const [dropActive, setDropActive] = useState(false);
@@ -163,7 +168,7 @@ export default function EditorArea({
             commands={active.commands ?? []}
             loading={active.eventLoading ?? false}
             error={active.eventError ?? null}
-            onSaveComment={(lines, text) => onSaveComment?.(active, lines, text)}
+            onSaveBlock={(kind, lines, text) => onSaveTextBlock?.(active, kind, lines, text)}
           />
         )}
 

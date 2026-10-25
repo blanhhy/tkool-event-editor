@@ -434,14 +434,23 @@ async function writeBytes(
   return (await handle.getFile()).lastModified;
 }
 
-export interface CommentBlockUpdate {
-  /** 注释块首条指令（12410）在事件页指令数组中的下标 */
+export interface TextBlockUpdate {
+  /** 文本块首条指令（12410 / 10110）在事件页指令数组中的下标 */
   startIndex: number;
-  /** 注释块末条指令（最后一条 22410）的下标 */
+  /** 文本块末条指令（最后一条续行）的下标 */
   endIndex: number;
   /** 已按宽度与行数限制拆好的行；一行对应一条指令 */
   lines: string[];
 }
+
+/** 文本块的存储形态：首行指令码 + 续行指令码 */
+interface TextBlockCodes {
+  first: number;
+  continuation: number;
+}
+
+const COMMENT_CODES: TextBlockCodes = { first: 12410, continuation: 22410 };
+const MESSAGE_CODES: TextBlockCodes = { first: 10110, continuation: 20110 };
 
 /**
  * 写回注释块：把 [startIndex, endIndex] 替换为新的 12410 + 22410 指令序列。
@@ -451,7 +460,29 @@ export async function saveCommentBlock(
   root: FileSystemDirectoryHandle,
   encoding: Encoding,
   ref: EventPageRef,
-  update: CommentBlockUpdate,
+  update: TextBlockUpdate,
+): Promise<EventCommand[]> {
+  return saveTextBlock(root, encoding, ref, update, COMMENT_CODES);
+}
+
+/**
+ * 写回消息块：把 [startIndex, endIndex] 替换为新的 10110 + 20110 指令序列。
+ */
+export async function saveMessageBlock(
+  root: FileSystemDirectoryHandle,
+  encoding: Encoding,
+  ref: EventPageRef,
+  update: TextBlockUpdate,
+): Promise<EventCommand[]> {
+  return saveTextBlock(root, encoding, ref, update, MESSAGE_CODES);
+}
+
+async function saveTextBlock(
+  root: FileSystemDirectoryHandle,
+  encoding: Encoding,
+  ref: EventPageRef,
+  update: TextBlockUpdate,
+  codes: TextBlockCodes,
 ): Promise<EventCommand[]> {
   const { codec, encoding: encodingModule } = await getRpgrt();
   const state = getSession(root, encoding);
@@ -467,15 +498,19 @@ export async function saveCommentBlock(
     update.endIndex < update.startIndex ||
     update.endIndex >= commands.length
   ) {
-    throw new Error('注释块位置无效，事件页内容可能已变化');
+    throw new Error('文本块位置无效，事件页内容可能已变化');
   }
 
-  const indent = commands[update.startIndex]?.indent ?? 0;
+  const first = commands[update.startIndex];
+  const indent = first?.indent ?? 0;
+  // 首行的其它参数属于该指令本身（如消息的位置设置），换行时保留
+  const parameters = first?.parameters ?? [];
+
   const replacement: EventCommand[] = update.lines.map((text, index) => ({
-    code: index === 0 ? 12410 : 22410,
+    code: index === 0 ? codes.first : codes.continuation,
     indent,
     string: text,
-    parameters: [],
+    parameters: index === 0 ? parameters : [],
   }));
 
   commands.splice(update.startIndex, update.endIndex - update.startIndex + 1, ...replacement);

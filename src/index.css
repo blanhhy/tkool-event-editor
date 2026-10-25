@@ -1093,7 +1093,7 @@ button {
 
 .commandName {
   flex: 0 0 auto;
-  color: #7fb0ff;
+  color: var(--syntax-function);
 }
 
 .commandContent[data-role='branch'] .commandName {
@@ -1132,7 +1132,8 @@ button {
 
 .commentFence {
   display: block;
-  color: #4b5263;
+  color: var(--syntax-comment);
+  opacity: 0.6;
   user-select: none;
 }
 
@@ -1151,12 +1152,13 @@ button {
 }
 
 .commentLine {
-  color: #5c6370;
+  color: var(--syntax-comment);
 }
 
 .commentHash {
   margin-right: 6px;
-  color: #4b5263;
+  color: var(--syntax-comment);
+  opacity: 0.6;
   user-select: none;
 }
 
@@ -1193,7 +1195,71 @@ button {
   resize: none;
   overflow: hidden;
   background: transparent;
-  color: #5c6370;
+  color: var(--syntax-comment);
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  caret-color: #7fb0ff;
+}
+
+/* ── 消息块（10110 + 20110 续行） ─────────────────────── */
+
+.messageBlock {
+  display: block;
+}
+
+.messageIndex {
+  display: flex;
+  flex-direction: column;
+}
+
+.messageContent {
+  display: block;
+  cursor: text;
+}
+
+.messageLine {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* 续行内容与首行反引号之后的内容左对齐（showMessage(` 共 13 个半角字符） */
+.messageContinuation {
+  padding-left: 13ch;
+}
+
+.messageFn {
+  flex: 0 0 auto;
+  color: var(--syntax-function);
+}
+
+.messagePunct {
+  flex: 0 0 auto;
+  color: var(--syntax-punctuation);
+  opacity: 0.6;
+  user-select: none;
+}
+
+.messageString {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--syntax-string);
+  white-space: pre-wrap;
+}
+
+/* 编辑态：输入框紧跟前缀，内部各行自然从同一列开始 */
+.messageInput {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--syntax-string);
   font: inherit;
   line-height: inherit;
   white-space: pre-wrap;

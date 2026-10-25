@@ -1,13 +1,14 @@
-import { groupCommandLines, type CommandLine } from '../lib/eventCommands';
+import { groupCommandLines, type CommandLine, type TextBlockKind } from '../lib/eventCommands';
 import CommentBlock from './CommentBlock';
+import MessageBlock from './MessageBlock';
 
 interface Props {
   title: string;
   commands: CommandLine[];
   loading: boolean;
   error: string | null;
-  /** 注释块编辑完成：lines 为该块覆盖的指令，text 为编辑后的整段文本 */
-  onSaveComment?: (lines: CommandLine[], text: string) => void;
+  /** 文本块编辑完成：lines 为该块覆盖的指令，text 为编辑后的整段文本 */
+  onSaveBlock?: (kind: TextBlockKind, lines: CommandLine[], text: string) => void;
 }
 
 export default function EventPageView({
@@ -15,7 +16,7 @@ export default function EventPageView({
   commands,
   loading,
   error,
-  onSaveComment,
+  onSaveBlock,
 }: Props) {
   return (
     <div className="eventPageView">
@@ -39,7 +40,13 @@ export default function EventPageView({
               <CommentBlock
                 key={`comment-${row.lines[0].index}`}
                 lines={row.lines}
-                onSave={(text) => onSaveComment?.(row.lines, text)}
+                onSave={(text) => onSaveBlock?.('comment', row.lines, text)}
+              />
+            ) : row.kind === 'message' ? (
+              <MessageBlock
+                key={`message-${row.lines[0].index}`}
+                lines={row.lines}
+                onSave={(text) => onSaveBlock?.('message', row.lines, text)}
               />
             ) : (
               <div key={row.line.index} className="commandRow" role="listitem">

@@ -50,19 +50,34 @@ import {
   type EventPage,
   type EventPageRef,
 } from './lib/events';
-import { buildCommandLines, splitCommandText, type CommandLine } from './lib/eventCommands';
+import {
+  buildCommandLines,
+  splitCommandText,
+  type CommandLine,
+  type TextBlockKind,
+} from './lib/eventCommands';
 import {
   invalidateEventCache,
   loadEventCatalog,
   loadEventPageCommands,
   saveCommentBlock,
+  saveMessageBlock,
   type EventLoadProgress,
 } from './lib/lcfEvents';
 import { saveRecentProject, type RecentProject } from './lib/recent';
+import { SYNTAX_COLORS } from './lib/codeTheme';
 
 const DEFAULT_PANEL_WIDTH = 248;
 const MIN_PANEL_WIDTH = 180;
 const MAX_PANEL_WIDTH = 520;
+
+/** 把代码主题的语法配色暴露成 CSS 变量，事件视图与文本编辑器共用同一套颜色 */
+const SYNTAX_STYLE = {
+  '--syntax-function': SYNTAX_COLORS.function,
+  '--syntax-string': SYNTAX_COLORS.string,
+  '--syntax-comment': SYNTAX_COLORS.comment,
+  '--syntax-punctuation': SYNTAX_COLORS.punctuation,
+} as CSSProperties;
 
 function isUserCancellation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { name?: string }).name === 'AbortError';
@@ -459,8 +474,9 @@ export default function App() {
     [tabs, root],
   );
 
-  const saveEventComment = useCallback(
-    async (tab: EditorTab, lines: CommandLine[], text: string) => {
+  /** 写回注释块 / 消息块，并用返回的整页指令刷新标签 */
+  const saveEventTextBlock = useCallback(
+    async (tab: EditorTab, kind: TextBlockKind, lines: CommandLine[], text: string) => {
       if (!root || !tab.eventPage || lines.length === 0) return;
 
       try {
@@ -469,11 +485,15 @@ export default function App() {
           return;
         }
 
-        const commands = await saveCommentBlock(root, encoding, tab.eventPage, {
+        const update = {
           startIndex: lines[0].index,
           endIndex: lines[lines.length - 1].index,
           lines: splitCommandText(text),
-        });
+        };
+        const commands =
+          kind === 'comment'
+            ? await saveCommentBlock(root, encoding, tab.eventPage, update)
+            : await saveMessageBlock(root, encoding, tab.eventPage, update);
 
         setTabs((prev) =>
           prev.map((item) =>
@@ -482,7 +502,8 @@ export default function App() {
         );
       } catch (err: unknown) {
         console.error(err);
-        setError(err instanceof Error ? `保存注释失败：${err.message}` : '保存注释失败。');
+        const label = kind === 'comment' ? '注释' : '消息';
+        setError(err instanceof Error ? `保存${label}失败：${err.message}` : `保存${label}失败。`);
       }
     },
     [root, encoding],
@@ -927,6 +948,7 @@ export default function App() {
   return (
     <div
       className="appRoot"
+      style={SYNTAX_STYLE}
       data-resizing={resizingPanel ? 'true' : undefined}
       onContextMenu={handleContextMenu}
     >
@@ -1077,7 +1099,7 @@ export default function App() {
           onDropFile={handleDropFile}
           onCursorChange={(line, column) => setCursor({ line, column })}
           editorApiRef={editorApiRef}
-          onSaveComment={saveEventComment}
+          onSaveTextBlock={saveEventTextBlock}
         />
       </div>
 

@@ -239,7 +239,11 @@ export function buildCommandLines(commands: EventCommand[]): CommandLine[] {
 
 export type RenderRow =
   | { kind: 'command'; line: CommandLine }
-  | { kind: 'comment'; lines: CommandLine[] };
+  | { kind: 'comment'; lines: CommandLine[] }
+  | { kind: 'message'; lines: CommandLine[] };
+
+/** 可编辑的文本块类型：注释（12410）与消息（10110）共用一套读写规则 */
+export type TextBlockKind = 'comment' | 'message';
 
 /** 一行最多容纳的半角字符数（全角按两个半角计） */
 export const MAX_LINE_WIDTH = 64;
@@ -306,24 +310,38 @@ export function textFitsCommandLimits(text: string): boolean {
 }
 
 /**
- * 渲染分组：把 12410（注释）与后续 22410（注释续行）合成一个注释块，
- * 其余指令各自一行。注释块仍保留每行对应的行号。
+ * 渲染分组：把 12410（注释）与后续 22410 合成注释块，
+ * 把 10110（显示消息）与后续 20110 合成消息块，其余指令各自一行。
+ * 每个块仍保留每行对应的行号。
  */
 export function groupCommandLines(lines: CommandLine[]): RenderRow[] {
   const rows: RenderRow[] = [];
-  let comment: CommandLine[] | null = null;
+  let group: CommandLine[] | null = null;
+  let groupKind: TextBlockKind | null = null;
 
   for (const line of lines) {
     if (line.code === 12410) {
-      comment = [line];
-      rows.push({ kind: 'comment', lines: comment });
+      group = [line];
+      groupKind = 'comment';
+      rows.push({ kind: 'comment', lines: group });
       continue;
     }
-    if (line.code === 22410 && comment) {
-      comment.push(line);
+    if (line.code === 10110) {
+      group = [line];
+      groupKind = 'message';
+      rows.push({ kind: 'message', lines: group });
       continue;
     }
-    comment = null;
+    if (groupKind === 'comment' && group && line.code === 22410) {
+      group.push(line);
+      continue;
+    }
+    if (groupKind === 'message' && group && line.code === 20110) {
+      group.push(line);
+      continue;
+    }
+    group = null;
+    groupKind = null;
     rows.push({ kind: 'command', line });
   }
 
