@@ -43,9 +43,21 @@ import {
   type TreeClipboard,
 } from './lib/fs';
 import { DEFAULT_ENCODING, ENCODINGS, normalizeEncoding, readGameTitle, readProjectInfo, type Encoding } from './lib/project';
-import { emptyCatalog, pageKey, type EventCatalog, type EventPage } from './lib/events';
-import { buildCommandLines } from './lib/eventCommands';
-import { loadEventCatalog, loadEventPageCommands, type EventLoadProgress } from './lib/lcfEvents';
+import {
+  emptyCatalog,
+  pageKey,
+  type EventCatalog,
+  type EventPage,
+  type EventPageRef,
+} from './lib/events';
+import { buildCommandLines, splitCommandText, type CommandLine } from './lib/eventCommands';
+import {
+  invalidateEventCache,
+  loadEventCatalog,
+  loadEventPageCommands,
+  saveCommentBlock,
+  type EventLoadProgress,
+} from './lib/lcfEvents';
 import { saveRecentProject, type RecentProject } from './lib/recent';
 
 const DEFAULT_PANEL_WIDTH = 248;
@@ -98,40 +110,53 @@ export default function App() {
   }, [tabs]);
 
   /** 读取事件导航树；旧任务通过 token 作废 */
-  const loadEventsFor = useCallback((handle: FileSystemDirectoryHandle, enc: Encoding) => {
-    const token = eventsLoadRef.current + 1;
-    eventsLoadRef.current = token;
+  const loadEventsFor = useCallback(
+    (
+      handle: FileSystemDirectoryHandle,
+      enc: Encoding,
+      options: { silent?: boolean } = {},
+    ) => {
+      const token = eventsLoadRef.current + 1;
+      eventsLoadRef.current = token;
+      const silent = options.silent === true;
 
-    setCatalog(emptyCatalog());
-    setEventsError(null);
-    setEventsProgress(null);
-    setEventsLoading(true);
+      // 刷新时保留当前树，避免骨架替换造成折叠与闪烁
+      if (!silent) setCatalog(emptyCatalog());
+      setEventsError(null);
+      setEventsProgress(null);
+      setEventsLoading(true);
 
-    void loadEventCatalog(handle, enc, {
-      isCancelled: () => eventsLoadRef.current !== token,
-      onUpdate: (next) => {
-        if (eventsLoadRef.current === token) setCatalog(next);
-      },
-      onProgress: (progress) => {
-        if (eventsLoadRef.current === token) setEventsProgress(progress);
-      },
-    })
-      .then((next) => {
-        if (eventsLoadRef.current === token) setCatalog(next);
+      return loadEventCatalog(handle, enc, {
+        isCancelled: () => eventsLoadRef.current !== token,
+        onUpdate: silent
+          ? undefined
+          : (next) => {
+              if (eventsLoadRef.current === token) setCatalog(next);
+            },
+        onProgress: silent
+          ? undefined
+          : (progress) => {
+              if (eventsLoadRef.current === token) setEventsProgress(progress);
+            },
       })
-      .catch((err: unknown) => {
-        if (eventsLoadRef.current === token) {
-          console.error(err);
-          setEventsError(err instanceof Error ? err.message : '读取事件失败');
-        }
-      })
-      .finally(() => {
-        if (eventsLoadRef.current === token) {
-          setEventsLoading(false);
-          setEventsProgress(null);
-        }
-      });
-  }, []);
+        .then((next) => {
+          if (eventsLoadRef.current === token) setCatalog(next);
+        })
+        .catch((err: unknown) => {
+          if (eventsLoadRef.current === token) {
+            console.error(err);
+            setEventsError(err instanceof Error ? err.message : '读取事件失败');
+          }
+        })
+        .finally(() => {
+          if (eventsLoadRef.current === token) {
+            setEventsLoading(false);
+            setEventsProgress(null);
+          }
+        });
+    },
+    [],
+  );
 
   const activateProject = useCallback(
     async (handle: FileSystemDirectoryHandle, preferred?: Encoding) => {
@@ -299,30 +324,18 @@ export default function App() {
     dragSourceRef.current = { path, entry };
   }, []);
 
-  /** 打开事件页标签：按需读取指令，事件名只作标签标题 */
-  const openEventPage = useCallback(
-    (page: EventPage, label: string) => {
-      setActiveEventPage(page);
-      if (!root) return;
+  /** 读取事件页指令并更新对应标签；失败时把错误写进标签 */
+  const loadEventTab = useCallback(
+    (path: string, ref: EventPageRef): Promise<void> => {
+      if (!root) return Promise.resolve();
 
-      const path = `event:${pageKey(page.ref)}`;
-      if (tabs.some((tab) => tab.path === path)) {
-        setActiveTab(path);
-        return;
-      }
+      setTabs((prev) =>
+        prev.map((item) =>
+          item.path === path ? { ...item, eventLoading: true, eventError: null } : item,
+        ),
+      );
 
-      const tab: EditorTab = {
-        path,
-        name: label,
-        kind: 'event',
-        size: 0,
-        eventPage: page.ref,
-        eventLoading: true,
-      };
-      setTabs((prev) => [...prev, tab]);
-      setActiveTab(path);
-
-      void loadEventPageCommands(root, encoding, page.ref)
+      return loadEventPageCommands(root, encoding, ref)
         .then((commands) => {
           setTabs((prev) =>
             prev.map((item) =>
@@ -347,8 +360,51 @@ export default function App() {
           );
         });
     },
-    [root, encoding, tabs],
+    [root, encoding],
   );
+
+  /** 打开事件页标签：按需读取指令，事件名只作标签标题 */
+  const openEventPage = useCallback(
+    (page: EventPage, label: string) => {
+      setActiveEventPage(page);
+      if (!root) return;
+
+      const path = `event:${pageKey(page.ref)}`;
+      if (tabs.some((tab) => tab.path === path)) {
+        setActiveTab(path);
+        return;
+      }
+
+      const tab: EditorTab = {
+        path,
+        name: label,
+        kind: 'event',
+        size: 0,
+        eventPage: page.ref,
+        eventLoading: true,
+      };
+      setTabs((prev) => [...prev, tab]);
+      setActiveTab(path);
+
+      void loadEventTab(path, page.ref);
+    },
+    [root, tabs, loadEventTab],
+  );
+
+  /** 刷新事件树与已打开的事件页：丢弃解析缓存后重新从磁盘读取 */
+  const refreshEvents = useCallback(() => {
+    if (!root) return;
+
+    invalidateEventCache();
+
+    // 先等事件树读完，再逐个重读事件页；内置浏览器并发枚举目录会挂起
+    void loadEventsFor(root, encoding, { silent: true }).then(async () => {
+      for (const tab of tabs) {
+        if (tab.kind !== 'event' || !tab.eventPage) continue;
+        await loadEventTab(tab.path, tab.eventPage);
+      }
+    });
+  }, [root, encoding, tabs, loadEventsFor, loadEventTab]);
 
   const handleDropFile = useCallback(
     (path: string) => {
@@ -401,6 +457,35 @@ export default function App() {
       }
     },
     [tabs, root],
+  );
+
+  const saveEventComment = useCallback(
+    async (tab: EditorTab, lines: CommandLine[], text: string) => {
+      if (!root || !tab.eventPage || lines.length === 0) return;
+
+      try {
+        if (!(await ensureWritePermission(root))) {
+          setError('无法保存：没有获得写入权限。');
+          return;
+        }
+
+        const commands = await saveCommentBlock(root, encoding, tab.eventPage, {
+          startIndex: lines[0].index,
+          endIndex: lines[lines.length - 1].index,
+          lines: splitCommandText(text),
+        });
+
+        setTabs((prev) =>
+          prev.map((item) =>
+            item.path === tab.path ? { ...item, commands: buildCommandLines(commands) } : item,
+          ),
+        );
+      } catch (err: unknown) {
+        console.error(err);
+        setError(err instanceof Error ? `保存注释失败：${err.message}` : '保存注释失败。');
+      }
+    },
+    [root, encoding],
   );
 
   const activeTabData = tabs.find((tab) => tab.path === activeTab) ?? null;
@@ -940,6 +1025,18 @@ export default function App() {
               open={eventsOpen}
               onToggle={() => setEventsOpen((value) => !value)}
               divided
+              actions={
+                <button
+                  type="button"
+                  className="sidePanelAction"
+                  aria-label="刷新事件"
+                  title="刷新事件"
+                  disabled={!root || eventsLoading}
+                  onClick={refreshEvents}
+                >
+                  <RefreshIcon size={15} />
+                </button>
+              }
             >
               <EventManager
                 catalog={catalog}
@@ -980,6 +1077,7 @@ export default function App() {
           onDropFile={handleDropFile}
           onCursorChange={(line, column) => setCursor({ line, column })}
           editorApiRef={editorApiRef}
+          onSaveComment={saveEventComment}
         />
       </div>
 

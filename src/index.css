@@ -1119,6 +1119,87 @@ button {
   color: var(--color-text);
 }
 
+/* ── 注释块（12410 + 22410 续行） ─────────────────────── */
+
+.commentBlock {
+  display: block;
+}
+
+/* 首尾三引号：视觉分隔，不占行号 */
+.commentFenceRow {
+  cursor: text;
+}
+
+.commentFence {
+  display: block;
+  color: #4b5263;
+  user-select: none;
+}
+
+.commentIndex {
+  display: flex;
+  flex-direction: column;
+}
+
+.commentContent {
+  display: block;
+  cursor: text;
+}
+
+.commentLines {
+  min-height: 1.7em;
+}
+
+.commentLine {
+  color: #5c6370;
+}
+
+.commentHash {
+  margin-right: 6px;
+  color: #4b5263;
+  user-select: none;
+}
+
+/* 单行注释：井号前缀 + 单行输入 */
+.commentSingle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.commentSingle .commentLines {
+  flex: 1;
+  min-width: 0;
+}
+
+.commentSingle .commentInput {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.commentMultiBody {
+  display: block;
+}
+
+/* 无边框、透明背景，与代码文本自然融合 */
+.commentInput {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: #5c6370;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  caret-color: #7fb0ff;
+}
+
 .cmHost {
   flex: 1;
   min-height: 0;

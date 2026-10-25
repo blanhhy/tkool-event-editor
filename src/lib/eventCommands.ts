@@ -236,3 +236,96 @@ export function buildCommandLines(commands: EventCommand[]): CommandLine[] {
     };
   });
 }
+
+export type RenderRow =
+  | { kind: 'command'; line: CommandLine }
+  | { kind: 'comment'; lines: CommandLine[] };
+
+/** 一行最多容纳的半角字符数（全角按两个半角计） */
+export const MAX_LINE_WIDTH = 64;
+/** 一条指令最多拆成的行数（RPG_RT 对话框上限） */
+export const MAX_LINES = 4;
+
+/** 粗略的东亚宽字符判定：全角字符占两个半角位 */
+function isWideChar(code: number): boolean {
+  return (
+    (code >= 0x1100 && code <= 0x115f) ||
+    (code >= 0x2e80 && code <= 0xa4cf && code !== 0x303f) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe10 && code <= 0xfe19) ||
+    (code >= 0xfe30 && code <= 0xfe6f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    (code >= 0x1f300 && code <= 0x1f64f) ||
+    (code >= 0x1f900 && code <= 0x1f9ff) ||
+    (code >= 0x20000 && code <= 0x3fffd)
+  );
+}
+
+/**
+ * 按「每行最多 MAX_LINE_WIDTH 个半角、最多 MAX_LINES 行」把编辑文本拆成多行。
+ * 换行本身不会写进数据：每一行在 LCF 里都是独立的指令。
+ */
+export function splitCommandText(text: string): string[] {
+  const result: string[] = [];
+
+  for (const raw of text.split('\n')) {
+    let current = '';
+    let width = 0;
+
+    for (const char of raw) {
+      const charWidth = isWideChar(char.codePointAt(0) ?? 0) ? 2 : 1;
+      if (width + charWidth > MAX_LINE_WIDTH && current) {
+        result.push(current);
+        current = '';
+        width = 0;
+        if (result.length >= MAX_LINES) return result;
+      }
+      current += char;
+      width += charWidth;
+    }
+
+    result.push(current);
+    if (result.length >= MAX_LINES) return result;
+  }
+
+  return result.slice(0, MAX_LINES);
+}
+
+/** 输入是否仍在「每行宽度 + 总行数」限制内（编辑时用于拒绝超限输入） */
+export function textFitsCommandLimits(text: string): boolean {
+  const lines = text.split('\n');
+  if (lines.length > MAX_LINES) return false;
+
+  return lines.every((line) => {
+    let width = 0;
+    for (const char of line) width += isWideChar(char.codePointAt(0) ?? 0) ? 2 : 1;
+    return width <= MAX_LINE_WIDTH;
+  });
+}
+
+/**
+ * 渲染分组：把 12410（注释）与后续 22410（注释续行）合成一个注释块，
+ * 其余指令各自一行。注释块仍保留每行对应的行号。
+ */
+export function groupCommandLines(lines: CommandLine[]): RenderRow[] {
+  const rows: RenderRow[] = [];
+  let comment: CommandLine[] | null = null;
+
+  for (const line of lines) {
+    if (line.code === 12410) {
+      comment = [line];
+      rows.push({ kind: 'comment', lines: comment });
+      continue;
+    }
+    if (line.code === 22410 && comment) {
+      comment.push(line);
+      continue;
+    }
+    comment = null;
+    rows.push({ kind: 'command', line });
+  }
+
+  return rows;
+}

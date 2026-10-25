@@ -50,11 +50,33 @@ export async function ensureWritePermission(handle: FileSystemDirectoryHandle): 
   return next === 'granted';
 }
 
-export function iteratorOf(dir: FileSystemDirectoryHandle): AsyncIterableIterator<[string, FileSystemHandle]> {
-  const withEntries = dir as unknown as {
-    entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
-  };
-  return withEntries.entries();
+/**
+ * 同一目录的枚举排队执行：部分内嵌浏览器（Trae 内置浏览器等）在并发调用
+ * entries() 时会一直挂起，串行化后不会再卡住。
+ */
+const enumerationQueue = new WeakMap<FileSystemDirectoryHandle, Promise<unknown>>();
+
+async function enumerate(
+  dir: FileSystemDirectoryHandle,
+): Promise<[string, FileSystemHandle][]> {
+  const previous = enumerationQueue.get(dir) ?? Promise.resolve();
+  const task = previous.then(async () => {
+    const withEntries = dir as unknown as {
+      entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
+    };
+    const entries: [string, FileSystemHandle][] = [];
+    for await (const entry of withEntries.entries()) entries.push(entry);
+    return entries;
+  });
+
+  enumerationQueue.set(dir, task.catch(() => undefined));
+  return task;
+}
+
+export async function* iteratorOf(
+  dir: FileSystemDirectoryHandle,
+): AsyncGenerator<[string, FileSystemHandle]> {
+  yield* await enumerate(dir);
 }
 
 /** 读取一层目录，目录在前、按名称自然排序 */

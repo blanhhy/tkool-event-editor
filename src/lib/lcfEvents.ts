@@ -70,17 +70,25 @@ function decodeDatabaseWithEngine(
   return { engine, db };
 }
 
+async function openFile(
+  root: FileSystemDirectoryHandle,
+  name: string,
+): Promise<File | null> {
+  try {
+    const handle = await root.getFileHandle(name);
+    return await handle.getFile();
+  } catch {
+    return null;
+  }
+}
+
 async function readBytes(
   root: FileSystemDirectoryHandle,
   name: string,
 ): Promise<Uint8Array | null> {
-  try {
-    const handle = await root.getFileHandle(name);
-    const file = await handle.getFile();
-    return new Uint8Array(await file.arrayBuffer());
-  } catch {
-    return null;
-  }
+  const file = await openFile(root, name);
+  if (!file) return null;
+  return new Uint8Array(await file.arrayBuffer());
 }
 
 function toMapEvents(mapId: number, events: RpgEvent[]): EventObject[] {
@@ -228,12 +236,22 @@ export async function loadEventCatalog(
   return catalog;
 }
 
+interface CachedDatabase {
+  value: Database;
+  engine: '2k' | '2k3';
+  modified: number;
+}
+
+interface CachedMapUnit {
+  value: MapUnit;
+  modified: number;
+}
+
 interface EventSession {
   root: FileSystemDirectoryHandle;
   encoding: Encoding;
-  engine: '2k' | '2k3' | null;
-  db: Database | null;
-  maps: Map<number, MapUnit>;
+  db: CachedDatabase | null;
+  maps: Map<number, CachedMapUnit>;
   /** 地图 ID → 实际文件名（编号可能不是四位，也可能不连续） */
   mapFiles: Map<number, string> | null;
 }
@@ -242,9 +260,17 @@ let session: EventSession | null = null;
 
 function getSession(root: FileSystemDirectoryHandle, encoding: Encoding): EventSession {
   if (!session || session.root !== root || session.encoding !== encoding) {
-    session = { root, encoding, engine: null, db: null, maps: new Map(), mapFiles: null };
+    session = { root, encoding, db: null, maps: new Map(), mapFiles: null };
   }
   return session;
+}
+
+/**
+ * 丢弃 LDB 与地图的解析缓存。
+ * 之后调用 loadEventPageCommands 会重新从磁盘解码，拿到事件页的最新状态。
+ */
+export function invalidateEventCache(): void {
+  session = null;
 }
 
 async function ensureDatabase(
@@ -252,14 +278,15 @@ async function ensureDatabase(
   codec: RpgrtCodec,
   transcoder: Transcoder | undefined,
 ): Promise<Database> {
-  if (state.db) return state.db;
+  const file = await openFile(state.root, 'RPG_RT.ldb');
+  if (!file) throw new Error('缺少 RPG_RT.ldb，无法读取事件');
 
-  const bytes = await readBytes(state.root, 'RPG_RT.ldb');
-  if (!bytes) throw new Error('缺少 RPG_RT.ldb，无法读取事件');
+  // 文件被其他工具改过后（时间戳变化）丢弃缓存，保证读到最新状态
+  if (state.db && state.db.modified === file.lastModified) return state.db.value;
 
+  const bytes = new Uint8Array(await file.arrayBuffer());
   const { engine, db } = decodeDatabaseWithEngine(codec, bytes, transcoder);
-  state.engine = engine;
-  state.db = db;
+  state.db = { value: db, engine, modified: file.lastModified };
   return db;
 }
 
@@ -269,9 +296,6 @@ async function ensureMapUnit(
   transcoder: Transcoder | undefined,
   mapId: number,
 ): Promise<MapUnit> {
-  const cached = state.maps.get(mapId);
-  if (cached) return cached;
-
   if (!state.mapFiles) {
     const files = new Map<number, string>();
     for await (const [name, handle] of iteratorOf(state.root)) {
@@ -287,19 +311,26 @@ async function ensureMapUnit(
   const fileName = state.mapFiles.get(mapId);
   if (!fileName) throw new Error(`找不到地图文件（ID ${mapId}）`);
 
-  const bytes = await readBytes(state.root, fileName);
-  if (!bytes) throw new Error(`无法读取 ${fileName}`);
+  const file = await openFile(state.root, fileName);
+  if (!file) throw new Error(`无法读取 ${fileName}`);
+
+  const cached = state.maps.get(mapId);
+  if (cached && cached.modified === file.lastModified) return cached.value;
 
   // 地图解码依赖引擎版本
-  if (!state.engine) await ensureDatabase(state, codec, transcoder);
+  await ensureDatabase(state, codec, transcoder);
 
-  const unit = codec.decodeMapUnit(bytes, { engine: state.engine ?? '2k', transcoder });
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const unit = codec.decodeMapUnit(bytes, {
+    engine: state.db?.engine ?? '2k',
+    transcoder,
+  });
 
-  if (state.maps.size >= MAP_CACHE_LIMIT) {
+  if (state.maps.size >= MAP_CACHE_LIMIT && !state.maps.has(mapId)) {
     const oldest = state.maps.keys().next().value;
     if (oldest !== undefined) state.maps.delete(oldest);
   }
-  state.maps.set(mapId, unit);
+  state.maps.set(mapId, { value: unit, modified: file.lastModified });
   return unit;
 }
 
@@ -331,4 +362,124 @@ export async function loadEventPageCommands(
   const unit = await ensureMapUnit(state, codec, transcoder, ref.mapId);
   const event = (unit.events ?? []).find((item) => item.id === ref.eventId);
   return event?.pages?.[ref.pageIndex]?.eventCommands ?? [];
+}
+
+interface EventCommandsTarget {
+  commands: EventCommand[];
+  write: () => Promise<void>;
+}
+
+/** 定位事件页的指令数组，并给出把宿主文件写回磁盘的方法 */
+async function resolveEventCommands(
+  state: EventSession,
+  codec: RpgrtCodec,
+  transcoder: Transcoder,
+  ref: EventPageRef,
+): Promise<EventCommandsTarget> {
+  const db = await ensureDatabase(state, codec, transcoder);
+  const engine = state.db?.engine ?? '2k';
+
+  const writeDatabase = async () => {
+    const bytes = codec.encodeDatabase(db, { engine, transcoder });
+    const modified = await writeBytes(state.root, 'RPG_RT.ldb', bytes);
+    // 写回后同步缓存的时间戳，避免下次读取误判为外部修改
+    if (state.db) state.db.modified = modified;
+  };
+
+  if (ref.category === 'common') {
+    const event = (db.commonevents ?? []).find((item) => item.id === ref.commonEventId);
+    if (!event) throw new Error(`找不到公共事件 ${ref.commonEventId}`);
+    event.eventCommands ??= [];
+    return { commands: event.eventCommands, write: writeDatabase };
+  }
+
+  if (ref.category === 'troop') {
+    const troop = (db.troops ?? []).find((item) => item.id === ref.troopId);
+    const page = troop?.pages?.[ref.pageIndex];
+    if (!page) throw new Error(`找不到敌群 ${ref.troopId} 的事件页 ${ref.pageIndex + 1}`);
+    page.eventCommands ??= [];
+    return { commands: page.eventCommands, write: writeDatabase };
+  }
+
+  const unit = await ensureMapUnit(state, codec, transcoder, ref.mapId);
+  const event = (unit.events ?? []).find((item) => item.id === ref.eventId);
+  const page = event?.pages?.[ref.pageIndex];
+  if (!page) throw new Error(`找不到地图事件 ${ref.eventId} 的事件页 ${ref.pageIndex + 1}`);
+  page.eventCommands ??= [];
+
+  const fileName = state.mapFiles?.get(ref.mapId);
+  if (!fileName) throw new Error(`找不到地图文件（ID ${ref.mapId}）`);
+
+  return {
+    commands: page.eventCommands,
+    write: async () => {
+      const bytes = codec.encodeMapUnit(unit, { engine, transcoder });
+      const modified = await writeBytes(state.root, fileName, bytes);
+      const entry = state.maps.get(ref.mapId);
+      if (entry) entry.modified = modified;
+    },
+  };
+}
+
+async function writeBytes(
+  root: FileSystemDirectoryHandle,
+  name: string,
+  bytes: Uint8Array,
+): Promise<number> {
+  const handle = await root.getFileHandle(name);
+  const writable = await handle.createWritable();
+  await writable.write(bytes as unknown as FileSystemWriteChunkType);
+  await writable.close();
+  // 返回写入后的时间戳，供缓存判定
+  return (await handle.getFile()).lastModified;
+}
+
+export interface CommentBlockUpdate {
+  /** 注释块首条指令（12410）在事件页指令数组中的下标 */
+  startIndex: number;
+  /** 注释块末条指令（最后一条 22410）的下标 */
+  endIndex: number;
+  /** 已按宽度与行数限制拆好的行；一行对应一条指令 */
+  lines: string[];
+}
+
+/**
+ * 写回注释块：把 [startIndex, endIndex] 替换为新的 12410 + 22410 指令序列。
+ * 行数可以增加或减少，返回值是修改后的整页指令数组。
+ */
+export async function saveCommentBlock(
+  root: FileSystemDirectoryHandle,
+  encoding: Encoding,
+  ref: EventPageRef,
+  update: CommentBlockUpdate,
+): Promise<EventCommand[]> {
+  const { codec, encoding: encodingModule } = await getRpgrt();
+  const state = getSession(root, encoding);
+  const transcoder = buildTranscoder(encodingModule, encoding);
+
+  if (!transcoder) throw new Error('当前编码不可用，无法写回；请检查工程编码设置');
+
+  const target = await resolveEventCommands(state, codec, transcoder, ref);
+  const { commands } = target;
+
+  if (
+    update.startIndex < 0 ||
+    update.endIndex < update.startIndex ||
+    update.endIndex >= commands.length
+  ) {
+    throw new Error('注释块位置无效，事件页内容可能已变化');
+  }
+
+  const indent = commands[update.startIndex]?.indent ?? 0;
+  const replacement: EventCommand[] = update.lines.map((text, index) => ({
+    code: index === 0 ? 12410 : 22410,
+    indent,
+    string: text,
+    parameters: [],
+  }));
+
+  commands.splice(update.startIndex, update.endIndex - update.startIndex + 1, ...replacement);
+  await target.write();
+
+  return commands;
 }

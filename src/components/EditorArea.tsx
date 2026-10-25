@@ -40,6 +40,7 @@ interface Props {
   onDropFile: (path: string) => void;
   onCursorChange: (line: number, column: number) => void;
   editorApiRef: MutableRefObject<TextEditorApi | null>;
+  onSaveComment?: (tab: EditorTab, lines: CommandLine[], text: string) => void;
 }
 
 const DRAG_TYPE = 'application/x-tkool-file';
@@ -54,6 +55,7 @@ export default function EditorArea({
   onDropFile,
   onCursorChange,
   editorApiRef,
+  onSaveComment,
 }: Props) {
   const active = tabs.find((tab) => tab.path === activeId) ?? null;
   const [dropActive, setDropActive] = useState(false);
@@ -161,6 +163,7 @@ export default function EditorArea({
             commands={active.commands ?? []}
             loading={active.eventLoading ?? false}
             error={active.eventError ?? null}
+            onSaveComment={(lines, text) => onSaveComment?.(active, lines, text)}
           />
         )}
 
