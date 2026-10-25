@@ -47,7 +47,7 @@ function languageFor(name: string) {
 const appTheme = EditorView.theme({
   '&': {
     height: '100%',
-    backgroundColor: '#1a1d23',
+    backgroundColor: 'var(--color-editor-bg)',
   },
   '.cm-scroller': {
     fontFamily: "'Cascadia Code', 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace",
@@ -55,7 +55,7 @@ const appTheme = EditorView.theme({
     lineHeight: '1.6',
   },
   '.cm-gutters': {
-    backgroundColor: '#1a1d23',
+    backgroundColor: 'var(--color-editor-bg)',
     color: '#4d5563',
     borderRight: '1px solid #252932',
   },
@@ -72,7 +72,7 @@ const appTheme = EditorView.theme({
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
     backgroundColor: 'rgba(95, 145, 220, 0.28)',
   },
-});
+}, { dark: true });
 
 export default function TextEditor({
   value,
