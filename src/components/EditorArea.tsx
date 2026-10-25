@@ -1,16 +1,21 @@
 import { lazy, Suspense, useState, type DragEvent, type MutableRefObject } from 'react';
 import { formatBytes, kindLabel, type FileKind } from '../lib/file';
+import type { CommandLine } from '../lib/eventCommands';
+import type { EventPageRef } from '../lib/events';
 import type { Encoding } from '../lib/project';
+import EventPageView from './EventPageView';
 import FileTypeIcon from './FileTypeIcon';
 import { FileIcon } from './icons';
 import type { TextEditorApi } from './TextEditor';
 
 const TextEditor = lazy(() => import('./TextEditor'));
 
+export type EditorTabKind = FileKind | 'event';
+
 export interface EditorTab {
   path: string;
   name: string;
-  kind: FileKind;
+  kind: EditorTabKind;
   size: number;
   text?: string;
   editable?: boolean;
@@ -18,6 +23,11 @@ export interface EditorTab {
   eol?: 'CRLF' | 'LF';
   objectUrl?: string;
   dirty?: boolean;
+  /** 事件页标签专用 */
+  eventPage?: EventPageRef;
+  commands?: CommandLine[];
+  eventLoading?: boolean;
+  eventError?: string | null;
 }
 
 interface Props {
@@ -99,7 +109,11 @@ export default function EditorArea({
                 }
               }}
             >
-              <FileTypeIcon name={tab.name} size={14} />
+              {tab.kind === 'event' ? (
+                <FileTypeIcon icon="code" size={14} />
+              ) : (
+                <FileTypeIcon name={tab.name} size={14} />
+              )}
               <span className="tabLabel">{tab.name}</span>
               {tab.dirty && <span className="tabDirtyDot" aria-label="未保存" />}
               <button
@@ -139,6 +153,15 @@ export default function EditorArea({
               apiRef={editorApiRef}
             />
           </Suspense>
+        )}
+
+        {active?.kind === 'event' && (
+          <EventPageView
+            title={active.name}
+            commands={active.commands ?? []}
+            loading={active.eventLoading ?? false}
+            error={active.eventError ?? null}
+          />
         )}
 
         {active?.kind === 'image' && (

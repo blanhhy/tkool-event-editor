@@ -44,7 +44,8 @@ import {
 } from './lib/fs';
 import { DEFAULT_ENCODING, ENCODINGS, normalizeEncoding, readGameTitle, readProjectInfo, type Encoding } from './lib/project';
 import { emptyCatalog, pageKey, type EventCatalog, type EventPage } from './lib/events';
-import { loadEventCatalog, type EventLoadProgress } from './lib/lcfEvents';
+import { buildCommandLines } from './lib/eventCommands';
+import { loadEventCatalog, loadEventPageCommands, type EventLoadProgress } from './lib/lcfEvents';
 import { saveRecentProject, type RecentProject } from './lib/recent';
 
 const DEFAULT_PANEL_WIDTH = 248;
@@ -298,6 +299,57 @@ export default function App() {
     dragSourceRef.current = { path, entry };
   }, []);
 
+  /** 打开事件页标签：按需读取指令，事件名只作标签标题 */
+  const openEventPage = useCallback(
+    (page: EventPage, label: string) => {
+      setActiveEventPage(page);
+      if (!root) return;
+
+      const path = `event:${pageKey(page.ref)}`;
+      if (tabs.some((tab) => tab.path === path)) {
+        setActiveTab(path);
+        return;
+      }
+
+      const tab: EditorTab = {
+        path,
+        name: label,
+        kind: 'event',
+        size: 0,
+        eventPage: page.ref,
+        eventLoading: true,
+      };
+      setTabs((prev) => [...prev, tab]);
+      setActiveTab(path);
+
+      void loadEventPageCommands(root, encoding, page.ref)
+        .then((commands) => {
+          setTabs((prev) =>
+            prev.map((item) =>
+              item.path === path
+                ? { ...item, commands: buildCommandLines(commands), eventLoading: false }
+                : item,
+            ),
+          );
+        })
+        .catch((err: unknown) => {
+          console.error(err);
+          setTabs((prev) =>
+            prev.map((item) =>
+              item.path === path
+                ? {
+                    ...item,
+                    eventLoading: false,
+                    eventError: err instanceof Error ? err.message : '读取事件页失败',
+                  }
+                : item,
+            ),
+          );
+        });
+    },
+    [root, encoding, tabs],
+  );
+
   const handleDropFile = useCallback(
     (path: string) => {
       const source = dragSourceRef.current;
@@ -353,7 +405,9 @@ export default function App() {
 
   const activeTabData = tabs.find((tab) => tab.path === activeTab) ?? null;
   const activeTypeLabel = activeTabData
-    ? extensionOf(activeTabData.name).toUpperCase() || kindLabel(activeTabData.kind)
+    ? activeTabData.kind === 'event'
+      ? '事件页'
+      : extensionOf(activeTabData.name).toUpperCase() || kindLabel(activeTabData.kind)
     : '';
 
   const changeTabEncoding = useCallback(
@@ -891,7 +945,7 @@ export default function App() {
                 catalog={catalog}
                 hasProject={!!root}
                 selected={activeEventPage ? pageKey(activeEventPage.ref) : null}
-                onSelectPage={setActiveEventPage}
+                onSelectPage={openEventPage}
                 loading={eventsLoading}
                 progress={eventsProgress}
                 error={eventsError}

@@ -16,7 +16,7 @@ interface Props {
   hasProject: boolean;
   /** 当前选中事件页的 pageKey */
   selected: string | null;
-  onSelectPage: (page: EventPage) => void;
+  onSelectPage: (page: EventPage, label: string) => void;
   loading?: boolean;
   progress?: { done: number; total: number } | null;
   error?: string | null;
@@ -124,11 +124,13 @@ function EventObjectRow({
   event: EventObject;
   depth: number;
   selected: string | null;
-  onSelectPage: (page: EventPage) => void;
+  onSelectPage: (page: EventPage, label: string) => void;
 }) {
+  const eventLabel = formatEventLabel(event.id, event.name);
+
   return (
     <TreeBranch
-      label={formatEventLabel(event.id, event.name)}
+      label={eventLabel}
       icon={<FileTypeIcon icon="object" size={16} />}
       depth={depth}
       count={event.pages.length}
@@ -140,6 +142,7 @@ function EventObjectRow({
           depth={depth + 1}
           selected={selected}
           onSelectPage={onSelectPage}
+          selectLabel={event.pages.length > 1 ? `${eventLabel} · 页${page.index}` : eventLabel}
         />
       ))}
     </TreeBranch>
@@ -151,11 +154,13 @@ function PageRow({
   depth,
   selected,
   onSelectPage,
+  selectLabel,
 }: {
   page: EventPage;
   depth: number;
   selected: string | null;
-  onSelectPage: (page: EventPage) => void;
+  onSelectPage: (page: EventPage, label: string) => void;
+  selectLabel: string;
 }) {
   const key = pageKey(page.ref);
   const active = selected === key;
@@ -170,12 +175,12 @@ function PageRow({
       data-selected={active ? 'true' : undefined}
       tabIndex={0}
       style={{ paddingLeft: 6 + depth * 14 }}
-      onClick={() => onSelectPage(page)}
+      onClick={() => onSelectPage(page, selectLabel)}
       onMouseDown={(event) => event.currentTarget.focus()}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          onSelectPage(page);
+          onSelectPage(page, selectLabel);
         }
       }}
     >
