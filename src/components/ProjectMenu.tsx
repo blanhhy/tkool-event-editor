@@ -62,6 +62,24 @@ export default function ProjectMenu({
     onOpen();
   }
 
+  /** 没有工程时先看有没有最近工程：只有一个可选项就直接打开目录选择器，不弹菜单 */
+  async function handleTriggerClick() {
+    if (root) {
+      setOpen((value) => !value);
+      return;
+    }
+    if (busy) return;
+
+    const rows = await listRecentProjects().catch(() => [] as RecentProject[]);
+    setRecent(rows);
+    if (rows.length === 0) {
+      setOpen(false);
+      onOpen();
+      return;
+    }
+    setOpen(true);
+  }
+
   function handleClose() {
     setOpen(false);
     onClose();
@@ -83,7 +101,7 @@ export default function ProjectMenu({
         aria-label={root ? `项目：${root.name}` : '打开项目'}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => void handleTriggerClick()}
       >
         <span className="projectTriggerIconWrap">
           <FolderIcon size={16} className="projectTriggerIcon" />
