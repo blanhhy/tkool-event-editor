@@ -603,6 +603,22 @@ button {
   min-height: 0;
 }
 
+/* 侧栏内的栏目：展开时平分剩余高度，折叠后只保留标题行 */
+.panelSection {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.panelSection[data-open='false'] {
+  flex: 0 0 auto;
+}
+
+.panelSection[data-divided='true'] {
+  border-top: 1px solid var(--color-border-dim);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sidePanel {
     transition: none;
@@ -799,6 +815,18 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12.5px;
+}
+
+.treeCount {
+  flex: 0 0 auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--color-bg-hover);
+  color: var(--color-text-dim);
+  font-size: 10.5px;
+  line-height: 15px;
+  text-align: center;
 }
 
 .treeRow[data-cut='true'] .treeLabel {

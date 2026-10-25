@@ -8,12 +8,14 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import EditorArea, { type EditorTab } from './components/EditorArea';
+import EventManager from './components/EventManager';
 import FileTree, { type TreeActions } from './components/FileTree';
 import MenuBar from './components/MenuBar';
 import ProjectMenu from './components/ProjectMenu';
+import SidePanelSection from './components/SidePanelSection';
 import type { ContextMenuItem } from './components/ContextMenu';
 import type { TextEditorApi } from './components/TextEditor';
-import { ChevronIcon, ExplorerIcon, NewFileIcon, NewFolderIcon, RefreshIcon } from './components/icons';
+import { ExplorerIcon, NewFileIcon, NewFolderIcon, RefreshIcon } from './components/icons';
 import {
   readProjectConfig,
   writeProjectConfig,
@@ -41,6 +43,7 @@ import {
   type TreeClipboard,
 } from './lib/fs';
 import { DEFAULT_ENCODING, ENCODINGS, normalizeEncoding, readGameTitle, readProjectInfo, type Encoding } from './lib/project';
+import { emptyCatalog, pageKey, type EventCatalog, type EventPage } from './lib/events';
 import { saveRecentProject, type RecentProject } from './lib/recent';
 
 const DEFAULT_PANEL_WIDTH = 248;
@@ -66,6 +69,9 @@ export default function App() {
     closedEdgeX: number;
   } | null>(null);
   const [explorerOpen, setExplorerOpen] = useState(true);
+  const [eventsOpen, setEventsOpen] = useState(true);
+  const [catalog] = useState<EventCatalog>(emptyCatalog);
+  const [activeEventPage, setActiveEventPage] = useState<EventPage | null>(null);
   const [treeRefreshToken, setTreeRefreshToken] = useState(0);
   const [clipboard, setClipboard] = useState<TreeClipboard | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -107,6 +113,7 @@ export default function App() {
         setEncoding(nextEncoding);
         setTitle(nextTitle);
         setSelected(null);
+        setActiveEventPage(null);
         setClipboard(null);
         setRenamingPath(null);
 
@@ -164,6 +171,7 @@ export default function App() {
     setTitle(null);
     setEncoding(DEFAULT_ENCODING);
     setSelected(null);
+    setActiveEventPage(null);
     setClipboard(null);
     setRenamingPath(null);
     setError(null);
@@ -772,53 +780,45 @@ export default function App() {
           style={{ '--side-panel-w': `${panelWidth}px` } as CSSProperties}
         >
           <div className="sidePanelInner">
-            <div className="sidePanelHeader">
-              <button
-                type="button"
-                className="sidePanelTitle"
-                aria-expanded={explorerOpen}
-                title={explorerOpen ? '折叠资源管理器' : '展开资源管理器'}
-                onClick={toggleExplorer}
-              >
-                <span className="chevron" data-expanded={explorerOpen ? 'true' : 'false'}>
-                  <ChevronIcon size={12} />
-                </span>
-                <span className="sidePanelTitleText">资源管理器</span>
-              </button>
-              <div className="sidePanelActions">
-                <button
-                  type="button"
-                  className="sidePanelAction"
-                  aria-label="新建文件"
-                  title="新建文件"
-                  disabled={!root}
-                  onClick={() => void newTextFile()}
-                >
-                  <NewFileIcon size={15} />
-                </button>
-                <button
-                  type="button"
-                  className="sidePanelAction"
-                  aria-label="新建文件夹"
-                  title="新建文件夹"
-                  disabled={!root}
-                  onClick={() => void newFolder()}
-                >
-                  <NewFolderIcon size={15} />
-                </button>
-                <button
-                  type="button"
-                  className="sidePanelAction"
-                  aria-label="刷新"
-                  title="刷新"
-                  disabled={!root}
-                  onClick={refreshTree}
-                >
-                  <RefreshIcon size={15} />
-                </button>
-              </div>
-            </div>
-            <div className="sidePanelBody" data-collapsed={explorerOpen ? undefined : 'true'}>
+            <SidePanelSection
+              title="资源管理器"
+              open={explorerOpen}
+              onToggle={toggleExplorer}
+              actions={
+                <>
+                  <button
+                    type="button"
+                    className="sidePanelAction"
+                    aria-label="新建文件"
+                    title="新建文件"
+                    disabled={!root}
+                    onClick={() => void newTextFile()}
+                  >
+                    <NewFileIcon size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="sidePanelAction"
+                    aria-label="新建文件夹"
+                    title="新建文件夹"
+                    disabled={!root}
+                    onClick={() => void newFolder()}
+                  >
+                    <NewFolderIcon size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="sidePanelAction"
+                    aria-label="刷新"
+                    title="刷新"
+                    disabled={!root}
+                    onClick={refreshTree}
+                  >
+                    <RefreshIcon size={15} />
+                  </button>
+                </>
+              }
+            >
               <FileTree
                 key={root ? projectSeq : 'empty'}
                 root={root}
@@ -829,7 +829,21 @@ export default function App() {
                 onSelect={handleSelect}
                 onDragStartFile={handleDragStartFile}
               />
-            </div>
+            </SidePanelSection>
+
+            <SidePanelSection
+              title="事件管理器"
+              open={eventsOpen}
+              onToggle={() => setEventsOpen((value) => !value)}
+              divided
+            >
+              <EventManager
+                catalog={catalog}
+                hasProject={!!root}
+                selected={activeEventPage ? pageKey(activeEventPage.ref) : null}
+                onSelectPage={setActiveEventPage}
+              />
+            </SidePanelSection>
           </div>
         </aside>
 

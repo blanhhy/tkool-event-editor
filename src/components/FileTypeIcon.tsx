@@ -4,6 +4,7 @@ import binaryIcon from '../assets/jetbrains-icons/binary.svg?raw';
 import configIcon from '../assets/jetbrains-icons/config.svg?raw';
 import cssIcon from '../assets/jetbrains-icons/css.svg?raw';
 import csvIcon from '../assets/jetbrains-icons/csv.svg?raw';
+import codeIcon from '../assets/jetbrains-icons/code.svg?raw';
 import folderIcon from '../assets/jetbrains-icons/folder.svg?raw';
 import fontIcon from '../assets/jetbrains-icons/font.svg?raw';
 import htmlIcon from '../assets/jetbrains-icons/html.svg?raw';
@@ -12,6 +13,8 @@ import javascriptIcon from '../assets/jetbrains-icons/javascript.svg?raw';
 import jsonIcon from '../assets/jetbrains-icons/json.svg?raw';
 import markdownIcon from '../assets/jetbrains-icons/markdown.svg?raw';
 import mapIcon from '../assets/jetbrains-icons/map.svg?raw';
+import objectIcon from '../assets/jetbrains-icons/object.svg?raw';
+import packageIcon from '../assets/jetbrains-icons/package.svg?raw';
 import propertiesIcon from '../assets/jetbrains-icons/properties.svg?raw';
 import sqlIcon from '../assets/jetbrains-icons/sql.svg?raw';
 import tableIcon from '../assets/jetbrains-icons/table.svg?raw';
@@ -29,6 +32,7 @@ const ICONS = {
   config: configIcon,
   css: cssIcon,
   csv: csvIcon,
+  code: codeIcon,
   folder: folderIcon,
   font: fontIcon,
   html: htmlIcon,
@@ -37,6 +41,8 @@ const ICONS = {
   json: jsonIcon,
   markdown: markdownIcon,
   map: mapIcon,
+  object: objectIcon,
+  package: packageIcon,
   properties: propertiesIcon,
   sql: sqlIcon,
   table: tableIcon,
@@ -49,6 +55,8 @@ const ICONS = {
 };
 
 type IconKey = keyof typeof ICONS;
+
+export type { IconKey };
 
 /** 扩展名 → 图标。未列出的扩展名统一使用 unknown */
 const ICON_BY_EXT: Record<string, IconKey> = {
@@ -162,13 +170,15 @@ function iconKey(filename: string): IconKey {
 }
 
 interface Props {
-  name: string;
+  name?: string;
   kind?: 'file' | 'directory';
+  /** 直接指定图标，优先于按扩展名推断 */
+  icon?: IconKey;
   size?: number;
 }
 
-export default function FileTypeIcon({ name, kind = 'file', size = 16 }: Props) {
-  const svg = kind === 'directory' ? ICONS.folder : ICONS[iconKey(name)];
+export default function FileTypeIcon({ name = '', kind = 'file', icon, size = 16 }: Props) {
+  const svg = icon ? ICONS[icon] : kind === 'directory' ? ICONS.folder : ICONS[iconKey(name)];
   return (
     <span
       className="fileTypeIcon"
