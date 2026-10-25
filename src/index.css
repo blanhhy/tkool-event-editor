@@ -702,7 +702,8 @@ button {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 6px 10px;
+  /* 底部预留两行高度的空白，便于滚动到底后继续操作空白处菜单 */
+  padding: 0 6px 48px;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
@@ -798,6 +799,24 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12.5px;
+}
+
+.treeRow[data-cut='true'] .treeLabel {
+  opacity: 0.5;
+}
+
+.treeRenameInput {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--color-primary);
+  border-radius: 2px;
+  background: var(--color-bg-elev);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 12.5px;
+  outline: none;
 }
 
 .treeHint {

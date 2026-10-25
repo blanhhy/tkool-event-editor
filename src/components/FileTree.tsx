@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { listDirectory, type DirEntry } from '../lib/fs';
-import ContextMenu from './ContextMenu';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { listDirectory, type DirEntry, type TreeClipboard } from '../lib/fs';
+import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import FileTypeIcon from './FileTypeIcon';
 import { ChevronIcon } from './icons';
 
@@ -9,14 +9,50 @@ function copyPath(path: string) {
   void navigator.clipboard.writeText(path).catch(() => undefined);
 }
 
+/** 刷新时内容没变化就复用旧数组，避免整棵子树白白重渲染造成闪烁 */
+function sameEntries(prev: DirEntry[] | null, next: DirEntry[]): boolean {
+  if (!prev || prev.length !== next.length) return false;
+  return prev.every((entry, index) => entry.name === next[index].name && entry.kind === next[index].kind);
+}
+
+export interface TreeActions {
+  clipboard: TreeClipboard | null;
+  renamingPath: string | null;
+  onCopy: (path: string, entry: DirEntry) => void;
+  onCut: (path: string, entry: DirEntry) => void;
+  onPaste: (targetDir: string) => void;
+  onStartRename: (path: string) => void;
+  onCommitRename: (path: string, nextName: string) => void;
+  onCancelRename: () => void;
+  onDelete: (path: string, entry: DirEntry) => void;
+  onNewFile: () => void;
+  onNewFolder: () => void;
+  onCloseProject: () => void;
+  onOpenProject: () => void;
+}
+
+const TreeActionsContext = createContext<TreeActions | null>(null);
+
+function useTreeActions(): TreeActions {
+  const actions = useContext(TreeActionsContext);
+  if (!actions) throw new Error('TreeActions 未提供');
+  return actions;
+}
+
+/** 不允许把条目粘贴到自身或自身子目录（否则会自我递归复制） */
+function canPasteInto(clipboard: TreeClipboard | null, targetDir: string): boolean {
+  if (!clipboard) return false;
+  return targetDir !== clipboard.path && !targetDir.startsWith(`${clipboard.path}/`);
+}
+
 interface Props {
   root: FileSystemDirectoryHandle | null;
   selected: string | null;
   busy: boolean;
   refreshToken: number;
+  actions: TreeActions;
   onSelect: (path: string, entry: DirEntry) => void;
   onDragStartFile: (path: string, entry: DirEntry) => void;
-  onOpenProject: () => void;
 }
 
 export default function FileTree({
@@ -24,14 +60,15 @@ export default function FileTree({
   selected,
   busy,
   refreshToken,
+  actions,
   onSelect,
   onDragStartFile,
-  onOpenProject,
 }: Props) {
   const [entries, setEntries] = useState<DirEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [contextPath, setContextPath] = useState<string | null>(null);
+  const [blankMenuAt, setBlankMenuAt] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!root) {
@@ -42,13 +79,13 @@ export default function FileTree({
     }
 
     let cancelled = false;
-    setEntries(null);
+    // 刷新时保留当前列表，避免行组件卸载导致展开状态与滚动位置重置
     setError(null);
     setLoading(true);
 
     listDirectory(root)
       .then((list) => {
-        if (!cancelled) setEntries(list);
+        if (!cancelled) setEntries((prev) => (sameEntries(prev, list) ? prev : list));
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : '读取目录失败');
@@ -62,47 +99,78 @@ export default function FileTree({
     };
   }, [root, refreshToken]);
 
-  if (!root) {
-    return (
-      <div className="treeEmpty">
-        <p>未打开工程</p>
-        <button type="button" className="primaryBtn" onClick={onOpenProject} disabled={busy}>
-          {busy ? '正在打开…' : '打开工程'}
-        </button>
-      </div>
-    );
-  }
-
-  if (error) {
-    return <div className="treeEmpty">{error}</div>;
-  }
-
-  if (loading || entries === null) {
-    return <div className="treeEmpty">读取目录…</div>;
-  }
-
-  if (entries.length === 0) {
-    return <div className="treeEmpty">空目录</div>;
-  }
+  const blankItems: ContextMenuItem[] = [
+    { id: 'new-file', label: '新建文件', onSelect: actions.onNewFile },
+    { id: 'new-folder', label: '新建文件夹', onSelect: actions.onNewFolder },
+    {
+      id: 'paste',
+      label: '粘贴',
+      separatorBefore: true,
+      disabled: !canPasteInto(actions.clipboard, ''),
+      onSelect: () => actions.onPaste(''),
+    },
+    {
+      id: 'close',
+      label: '关闭工程',
+      separatorBefore: true,
+      onSelect: actions.onCloseProject,
+    },
+  ];
 
   return (
-    <div className="tree" role="tree" aria-label="工程文件">
-      {entries.map((entry) => (
-        <TreeRow
-          key={entry.name}
-          entry={entry}
-          path={entry.name}
-          depth={0}
-          selected={selected}
-          refreshToken={refreshToken}
-          contextPath={contextPath}
-          onMenuOpen={setContextPath}
-          onMenuClose={() => setContextPath(null)}
-          onSelect={onSelect}
-          onDragStartFile={onDragStartFile}
-        />
-      ))}
-    </div>
+    <TreeActionsContext.Provider value={actions}>
+      <div
+        className="tree"
+        role="tree"
+        aria-label="工程文件"
+        aria-busy={loading || undefined}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          if (!root) return;
+          if ((event.target as HTMLElement).closest('.treeRow')) return;
+          setContextPath(null);
+          setBlankMenuAt({ x: event.clientX, y: event.clientY });
+        }}
+      >
+        {!root && (
+          <div className="treeEmpty">
+            <p>未打开工程</p>
+            <button type="button" className="primaryBtn" onClick={actions.onOpenProject} disabled={busy}>
+              {busy ? '正在打开…' : '打开工程'}
+            </button>
+          </div>
+        )}
+        {root && error && <div className="treeEmpty">{error}</div>}
+        {root && !error && entries === null && <div className="treeEmpty">读取目录…</div>}
+        {root && !error && entries?.length === 0 && <div className="treeEmpty">空目录</div>}
+        {root &&
+          !error &&
+          entries?.map((entry) => (
+            <TreeRow
+              key={entry.name}
+              entry={entry}
+              path={entry.name}
+              depth={0}
+              selected={selected}
+              refreshToken={refreshToken}
+              contextPath={contextPath}
+              onMenuOpen={setContextPath}
+              onMenuClose={() => setContextPath(null)}
+              onSelect={onSelect}
+              onDragStartFile={onDragStartFile}
+            />
+          ))}
+
+        {blankMenuAt && (
+          <ContextMenu
+            x={blankMenuAt.x}
+            y={blankMenuAt.y}
+            items={blankItems}
+            onClose={() => setBlankMenuAt(null)}
+          />
+        )}
+      </div>
+    </TreeActionsContext.Provider>
   );
 }
 
@@ -131,27 +199,28 @@ function TreeRow({
   onSelect,
   onDragStartFile,
 }: RowProps) {
+  const actions = useTreeActions();
   const isDir = entry.kind === 'directory';
+  const isRenaming = actions.renamingPath === path;
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const renameCancelledRef = useRef(false);
 
   useEffect(() => {
     if (!isDir || !expanded || children === null) return;
 
     let cancelled = false;
-    setLoading(true);
+    // 静默刷新子项：不显示「读取中」，也不替换未变化的数组，避免列表闪烁
     listDirectory(entry.handle as FileSystemDirectoryHandle)
       .then((list) => {
-        if (!cancelled) setChildren(list);
+        if (!cancelled) setChildren((prev) => (sameEntries(prev, list) ? prev : list));
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : '读取目录失败');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
 
     return () => {
@@ -184,6 +253,86 @@ function TreeRow({
     }
   }
 
+  const items: ContextMenuItem[] = isDir
+    ? [
+        {
+          id: 'toggle',
+          label: expanded ? '折叠' : '展开',
+          onSelect: () => void activate(),
+        },
+        {
+          id: 'cut',
+          label: '剪切',
+          separatorBefore: true,
+          onSelect: () => actions.onCut(path, entry),
+        },
+        { id: 'copy', label: '复制', onSelect: () => actions.onCopy(path, entry) },
+        {
+          id: 'paste',
+          label: '粘贴到此处',
+          disabled: !canPasteInto(actions.clipboard, path),
+          onSelect: () => actions.onPaste(path),
+        },
+        {
+          id: 'copy-relative',
+          label: '复制相对路径',
+          onSelect: () => copyPath(path),
+        },
+        {
+          id: 'rename',
+          label: '重命名',
+          separatorBefore: true,
+          onSelect: () => {
+            renameCancelledRef.current = false;
+            actions.onStartRename(path);
+          },
+        },
+        {
+          id: 'delete',
+          label: '删除',
+          onSelect: () => actions.onDelete(path, entry),
+        },
+      ]
+    : [
+        { id: 'open', label: '打开', onSelect: () => onSelect(path, entry) },
+        {
+          id: 'cut',
+          label: '剪切',
+          separatorBefore: true,
+          onSelect: () => actions.onCut(path, entry),
+        },
+        { id: 'copy', label: '复制', onSelect: () => actions.onCopy(path, entry) },
+        {
+          id: 'copy-relative',
+          label: '复制相对路径',
+          onSelect: () => copyPath(path),
+        },
+        {
+          id: 'rename',
+          label: '重命名',
+          separatorBefore: true,
+          onSelect: () => {
+            renameCancelledRef.current = false;
+            actions.onStartRename(path);
+          },
+        },
+        {
+          id: 'delete',
+          label: '删除',
+          onSelect: () => actions.onDelete(path, entry),
+        },
+      ];
+
+  function commitRename(value: string) {
+    if (renameCancelledRef.current) return;
+    const nextName = value.trim();
+    if (!nextName || nextName === entry.name) {
+      actions.onCancelRename();
+      return;
+    }
+    actions.onCommitRename(path, nextName);
+  }
+
   return (
     <>
       <div
@@ -195,8 +344,9 @@ function TreeRow({
         data-selected={
           (contextPath !== null ? contextPath === path : selected === path) ? 'true' : undefined
         }
+        data-cut={actions.clipboard?.mode === 'cut' && actions.clipboard.path === path ? 'true' : undefined}
         tabIndex={0}
-        draggable={!isDir}
+        draggable={!isDir && !isRenaming}
         style={{ paddingLeft: 6 + depth * 14 }}
         onDragStart={(event) => {
           if (isDir) return;
@@ -206,7 +356,7 @@ function TreeRow({
         }}
         onMouseDown={(event) => {
           // 浏览器不会自动聚焦 tabindex 的 div，手动接管以便 :focus-within 生效
-          event.currentTarget.focus();
+          if (!isRenaming) event.currentTarget.focus();
         }}
         onClick={activate}
         onContextMenu={(event) => {
@@ -230,44 +380,47 @@ function TreeRow({
           <span className="chevronPlaceholder" />
         )}
         <FileTypeIcon name={entry.name} kind={isDir ? 'directory' : 'file'} size={16} />
-        <span className="treeLabel" title={path}>
-          {entry.name}
-        </span>
+        {isRenaming ? (
+          <input
+            ref={inputRef}
+            className="treeRenameInput"
+            defaultValue={entry.name}
+            autoFocus
+            spellCheck={false}
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onFocus={(event) => {
+              const target = event.currentTarget;
+              const dot = isDir ? -1 : entry.name.lastIndexOf('.');
+              target.setSelectionRange(0, dot > 0 ? dot : entry.name.length);
+            }}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === 'Enter') {
+                event.currentTarget.blur();
+              } else if (event.key === 'Escape') {
+                renameCancelledRef.current = true;
+                actions.onCancelRename();
+              }
+            }}
+            onBlur={(event) => commitRename(event.currentTarget.value)}
+          />
+        ) : (
+          <span className="treeLabel" title={path}>
+            {entry.name}
+          </span>
+        )}
       </div>
 
       {menuAt && (
         <ContextMenu
           x={menuAt.x}
           y={menuAt.y}
+          items={items}
           onClose={() => {
             setMenuAt(null);
             onMenuClose();
           }}
-          items={
-            isDir
-              ? [
-                  {
-                    id: 'toggle',
-                    label: expanded ? '折叠' : '展开',
-                    onSelect: () => void activate(),
-                  },
-                  {
-                    id: 'copy',
-                    label: '复制相对路径',
-                    separatorBefore: true,
-                    onSelect: () => copyPath(path),
-                  },
-                ]
-              : [
-                  { id: 'open', label: '打开', onSelect: () => onSelect(path, entry) },
-                  {
-                    id: 'copy',
-                    label: '复制相对路径',
-                    separatorBefore: true,
-                    onSelect: () => copyPath(path),
-                  },
-                ]
-          }
         />
       )}
 

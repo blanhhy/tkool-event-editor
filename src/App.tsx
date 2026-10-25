@@ -8,7 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import EditorArea, { type EditorTab } from './components/EditorArea';
-import FileTree from './components/FileTree';
+import FileTree, { type TreeActions } from './components/FileTree';
 import MenuBar from './components/MenuBar';
 import ProjectMenu from './components/ProjectMenu';
 import type { ContextMenuItem } from './components/ContextMenu';
@@ -29,12 +29,18 @@ import {
 } from './lib/file';
 import {
   canPickDirectory,
+  copyEntry,
   countProject,
+  deleteEntry,
   ensureReadPermission,
   ensureWritePermission,
+  moveEntry,
   pickDirectory,
+  renameEntry,
+  splitPath,
   type DirEntry,
   type ProjectStats,
+  type TreeClipboard,
 } from './lib/fs';
 import { DEFAULT_ENCODING, ENCODINGS, normalizeEncoding, readGameTitle, readProjectInfo, type Encoding } from './lib/project';
 import { saveRecentProject, type RecentProject } from './lib/recent';
@@ -64,6 +70,8 @@ export default function App() {
   } | null>(null);
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [treeRefreshToken, setTreeRefreshToken] = useState(0);
+  const [clipboard, setClipboard] = useState<TreeClipboard | null>(null);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [projectSeq, setProjectSeq] = useState(0);
   const [tabs, setTabs] = useState<EditorTab[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
@@ -103,6 +111,8 @@ export default function App() {
         setTitle(nextTitle);
         setSelected(null);
         setStats(null);
+        setClipboard(null);
+        setRenamingPath(null);
 
         void countProject(handle).then((nextStats) => {
           if (activationRef.current === token) setStats(nextStats);
@@ -163,6 +173,8 @@ export default function App() {
     setEncoding(DEFAULT_ENCODING);
     setStats(null);
     setSelected(null);
+    setClipboard(null);
+    setRenamingPath(null);
     setError(null);
   }, [closeAllTabs]);
 
@@ -392,6 +404,143 @@ export default function App() {
     setTreeRefreshToken((token) => token + 1);
   }, []);
 
+  /** 路径变更后同步已打开的标签页 */
+  const remapTabs = useCallback((oldPath: string, nextPath: string) => {
+    setTabs((prev) =>
+      prev.map((tab) => {
+        if (tab.path === oldPath) return { ...tab, path: nextPath, name: splitPath(nextPath).name };
+        if (tab.path.startsWith(`${oldPath}/`)) {
+          const path = `${nextPath}${tab.path.slice(oldPath.length)}`;
+          return { ...tab, path, name: splitPath(path).name };
+        }
+        return tab;
+      }),
+    );
+    setActiveTab((current) => {
+      if (!current) return current;
+      if (current === oldPath) return nextPath;
+      if (current.startsWith(`${oldPath}/`)) return `${nextPath}${current.slice(oldPath.length)}`;
+      return current;
+    });
+  }, []);
+
+  const closeTabsUnder = useCallback(
+    (path: string) => {
+      const isUnder = (value: string) => value === path || value.startsWith(`${path}/`);
+      if (!tabs.some((tab) => isUnder(tab.path))) return;
+
+      tabs
+        .filter((tab) => isUnder(tab.path))
+        .forEach((tab) => {
+          if (tab.objectUrl) URL.revokeObjectURL(tab.objectUrl);
+        });
+
+      const next = tabs.filter((tab) => !isUnder(tab.path));
+      setTabs(next);
+      if (activeTab && isUnder(activeTab)) {
+        setActiveTab(next[next.length - 1]?.path ?? null);
+      }
+    },
+    [tabs, activeTab],
+  );
+
+  const copyTreeEntry = useCallback((path: string, entry: DirEntry) => {
+    setClipboard({ mode: 'copy', path, name: entry.name, kind: entry.kind });
+  }, []);
+
+  const cutTreeEntry = useCallback((path: string, entry: DirEntry) => {
+    setClipboard({ mode: 'cut', path, name: entry.name, kind: entry.kind });
+  }, []);
+
+  const pasteInto = useCallback(
+    async (targetDir: string) => {
+      if (!root || !clipboard) return;
+      try {
+        if (!(await ensureWritePermission(root))) {
+          setError('无法粘贴：没有获得写入权限。');
+          return;
+        }
+        const nextPath =
+          clipboard.mode === 'copy'
+            ? await copyEntry(root, clipboard.path, targetDir)
+            : await moveEntry(root, clipboard.path, targetDir);
+
+        if (clipboard.mode === 'cut' && nextPath !== clipboard.path) {
+          remapTabs(clipboard.path, nextPath);
+          setClipboard(null);
+        }
+        setSelected(nextPath);
+        setTreeRefreshToken((token) => token + 1);
+        setError(null);
+      } catch (err: unknown) {
+        console.error(err);
+        setError('粘贴失败。');
+      }
+    },
+    [root, clipboard, remapTabs],
+  );
+
+  const commitRename = useCallback(
+    async (path: string, nextName: string) => {
+      setRenamingPath(null);
+      if (!root) return;
+      try {
+        if (!(await ensureWritePermission(root))) {
+          setError('无法重命名：没有获得写入权限。');
+          return;
+        }
+        const nextPath = await renameEntry(root, path, nextName);
+        if (nextPath !== path) {
+          remapTabs(path, nextPath);
+          setSelected(nextPath);
+          setTreeRefreshToken((token) => token + 1);
+          setClipboard((current) =>
+            current && (current.path === path || current.path.startsWith(`${path}/`))
+              ? null
+              : current,
+          );
+        }
+        setError(null);
+      } catch (err: unknown) {
+        console.error(err);
+        setError(err instanceof Error ? err.message : '重命名失败。');
+      }
+    },
+    [root, remapTabs],
+  );
+
+  const removeTreeEntry = useCallback(
+    async (path: string, entry: DirEntry) => {
+      if (!root) return;
+      const label =
+        entry.kind === 'directory' ? `文件夹「${entry.name}」及其全部内容` : `文件「${entry.name}」`;
+      if (!window.confirm(`确定删除${label}吗？该操作不可撤销。`)) return;
+
+      try {
+        if (!(await ensureWritePermission(root))) {
+          setError('无法删除：没有获得写入权限。');
+          return;
+        }
+        await deleteEntry(root, path);
+        closeTabsUnder(path);
+        setSelected((current) =>
+          current === path || current?.startsWith(`${path}/`) ? null : current,
+        );
+        setClipboard((current) =>
+          current && (current.path === path || current.path.startsWith(`${path}/`))
+            ? null
+            : current,
+        );
+        setTreeRefreshToken((token) => token + 1);
+        setError(null);
+      } catch (err: unknown) {
+        console.error(err);
+        setError('删除失败。');
+      }
+    },
+    [root, closeTabsUnder],
+  );
+
   const saveAs = useCallback(async () => {
     if (!activeTabData || activeTabData.kind !== 'text') return;
 
@@ -486,6 +635,22 @@ export default function App() {
 
   const canEditActive = activeTabData?.kind === 'text' && !!activeTabData.editable;
   const hasDirtyText = tabs.some((tab) => tab.kind === 'text' && tab.editable && tab.dirty);
+
+  const treeActions: TreeActions = {
+    clipboard,
+    renamingPath,
+    onCopy: copyTreeEntry,
+    onCut: cutTreeEntry,
+    onPaste: (targetDir) => void pasteInto(targetDir),
+    onStartRename: (path) => setRenamingPath(path),
+    onCommitRename: (path, nextName) => void commitRename(path, nextName),
+    onCancelRename: () => setRenamingPath(null),
+    onDelete: (path, entry) => void removeTreeEntry(path, entry),
+    onNewFile: () => void newTextFile(),
+    onNewFolder: () => void newFolder(),
+    onCloseProject: closeProject,
+    onOpenProject: () => void openProject(),
+  };
 
   const fileItems: ContextMenuItem[] = [
     {
@@ -594,7 +759,7 @@ export default function App() {
         <div className="titleSpacer" />
       </header>
 
-      <div className="appBody">
+      <div className="appBody" data-menu-boundary="true">
         <nav className="activityBar" aria-label="侧边应用栏">
           <button
             type="button"
@@ -669,9 +834,9 @@ export default function App() {
                 selected={selected}
                 busy={busy}
                 refreshToken={treeRefreshToken}
+                actions={treeActions}
                 onSelect={handleSelect}
                 onDragStartFile={handleDragStartFile}
-                onOpenProject={() => void openProject()}
               />
             </div>
           </div>

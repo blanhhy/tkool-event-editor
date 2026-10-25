@@ -51,6 +51,7 @@ export default function MenuBar({ fileItems, editItems }: Props) {
           items={open === 'file' ? fileItems : editItems}
           onClose={() => setOpen(null)}
           anchorRef={barRef}
+          anchored
         />
       )}
     </div>
