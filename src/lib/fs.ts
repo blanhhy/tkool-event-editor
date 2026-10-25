@@ -50,7 +50,7 @@ export async function ensureWritePermission(handle: FileSystemDirectoryHandle): 
   return next === 'granted';
 }
 
-function iteratorOf(dir: FileSystemDirectoryHandle): AsyncIterableIterator<[string, FileSystemHandle]> {
+export function iteratorOf(dir: FileSystemDirectoryHandle): AsyncIterableIterator<[string, FileSystemHandle]> {
   const withEntries = dir as unknown as {
     entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
   };

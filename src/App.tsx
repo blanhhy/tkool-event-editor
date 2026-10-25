@@ -44,6 +44,7 @@ import {
 } from './lib/fs';
 import { DEFAULT_ENCODING, ENCODINGS, normalizeEncoding, readGameTitle, readProjectInfo, type Encoding } from './lib/project';
 import { emptyCatalog, pageKey, type EventCatalog, type EventPage } from './lib/events';
+import { loadEventCatalog, type EventLoadProgress } from './lib/lcfEvents';
 import { saveRecentProject, type RecentProject } from './lib/recent';
 
 const DEFAULT_PANEL_WIDTH = 248;
@@ -70,8 +71,12 @@ export default function App() {
   } | null>(null);
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [eventsOpen, setEventsOpen] = useState(true);
-  const [catalog] = useState<EventCatalog>(emptyCatalog);
+  const [catalog, setCatalog] = useState<EventCatalog>(emptyCatalog);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsProgress, setEventsProgress] = useState<EventLoadProgress | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
   const [activeEventPage, setActiveEventPage] = useState<EventPage | null>(null);
+  const eventsLoadRef = useRef(0);
   const [treeRefreshToken, setTreeRefreshToken] = useState(0);
   const [clipboard, setClipboard] = useState<TreeClipboard | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -90,6 +95,42 @@ export default function App() {
     setTabs([]);
     setActiveTab(null);
   }, [tabs]);
+
+  /** 读取事件导航树；旧任务通过 token 作废 */
+  const loadEventsFor = useCallback((handle: FileSystemDirectoryHandle, enc: Encoding) => {
+    const token = eventsLoadRef.current + 1;
+    eventsLoadRef.current = token;
+
+    setCatalog(emptyCatalog());
+    setEventsError(null);
+    setEventsProgress(null);
+    setEventsLoading(true);
+
+    void loadEventCatalog(handle, enc, {
+      isCancelled: () => eventsLoadRef.current !== token,
+      onUpdate: (next) => {
+        if (eventsLoadRef.current === token) setCatalog(next);
+      },
+      onProgress: (progress) => {
+        if (eventsLoadRef.current === token) setEventsProgress(progress);
+      },
+    })
+      .then((next) => {
+        if (eventsLoadRef.current === token) setCatalog(next);
+      })
+      .catch((err: unknown) => {
+        if (eventsLoadRef.current === token) {
+          console.error(err);
+          setEventsError(err instanceof Error ? err.message : '读取事件失败');
+        }
+      })
+      .finally(() => {
+        if (eventsLoadRef.current === token) {
+          setEventsLoading(false);
+          setEventsProgress(null);
+        }
+      });
+  }, []);
 
   const activateProject = useCallback(
     async (handle: FileSystemDirectoryHandle, preferred?: Encoding) => {
@@ -117,6 +158,8 @@ export default function App() {
         setClipboard(null);
         setRenamingPath(null);
 
+        loadEventsFor(handle, nextEncoding);
+
         await saveRecentProject({
           id: handle.name,
           name: handle.name,
@@ -136,7 +179,7 @@ export default function App() {
         if (activationRef.current === token) setBusy(false);
       }
     },
-    [closeAllTabs],
+    [closeAllTabs, loadEventsFor],
   );
 
   const openProject = useCallback(async () => {
@@ -166,12 +209,17 @@ export default function App() {
 
   const closeProject = useCallback(() => {
     activationRef.current += 1;
+    eventsLoadRef.current += 1;
     closeAllTabs();
     setRoot(null);
     setTitle(null);
     setEncoding(DEFAULT_ENCODING);
     setSelected(null);
     setActiveEventPage(null);
+    setCatalog(emptyCatalog());
+    setEventsLoading(false);
+    setEventsProgress(null);
+    setEventsError(null);
     setClipboard(null);
     setRenamingPath(null);
     setError(null);
@@ -181,6 +229,8 @@ export default function App() {
     (next: Encoding) => {
       setEncoding(next);
       if (!root) return;
+
+      loadEventsFor(root, next);
 
       void writeProjectConfig(root, next).then((written) => {
         if (!written) console.warn('未能写入 RPG_RT.json，编码设置仅在本次会话生效。');
@@ -200,7 +250,7 @@ export default function App() {
         });
       });
     },
-    [root],
+    [root, loadEventsFor],
   );
 
   const openFile = useCallback(
@@ -842,6 +892,9 @@ export default function App() {
                 hasProject={!!root}
                 selected={activeEventPage ? pageKey(activeEventPage.ref) : null}
                 onSelectPage={setActiveEventPage}
+                loading={eventsLoading}
+                progress={eventsProgress}
+                error={eventsError}
               />
             </SidePanelSection>
           </div>

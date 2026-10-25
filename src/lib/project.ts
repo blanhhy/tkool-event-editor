@@ -3,6 +3,8 @@ export interface EncodingOption {
   value: string;
   /** TextDecoder 使用的编码标签 */
   decoder: string;
+  /** iconv-lite 名称，LCF 解析/写回时使用 */
+  iconv: string;
   label: string;
 }
 
@@ -11,14 +13,14 @@ export interface EncodingOption {
  * CP1250 / MS949 / MS936 / CP950），其中 CP950 即繁体中文。
  */
 export const ENCODINGS: readonly EncodingOption[] = [
-  { value: '1252', decoder: 'windows-1252', label: '西欧 (CP1252)' },
-  { value: '65001', decoder: 'utf-8', label: 'UTF-8 (65001)' },
-  { value: '932', decoder: 'shift_jis', label: '日文 (MS932)' },
-  { value: '1251', decoder: 'windows-1251', label: '俄文 (CP1251)' },
-  { value: '1250', decoder: 'windows-1250', label: '中欧 (CP1250)' },
-  { value: '949', decoder: 'euc-kr', label: '韩文 (MS949)' },
-  { value: '936', decoder: 'gbk', label: '简体中文 (MS936)' },
-  { value: '950', decoder: 'big5', label: '繁体中文 (CP950)' },
+  { value: '1252', decoder: 'windows-1252', iconv: 'windows-1252', label: '西欧 (CP1252)' },
+  { value: '65001', decoder: 'utf-8', iconv: 'utf-8', label: 'UTF-8 (65001)' },
+  { value: '932', decoder: 'shift_jis', iconv: 'cp932', label: '日文 (MS932)' },
+  { value: '1251', decoder: 'windows-1251', iconv: 'windows-1251', label: '俄文 (CP1251)' },
+  { value: '1250', decoder: 'windows-1250', iconv: 'windows-1250', label: '中欧 (CP1250)' },
+  { value: '949', decoder: 'euc-kr', iconv: 'cp949', label: '韩文 (MS949)' },
+  { value: '936', decoder: 'gbk', iconv: 'cp936', label: '简体中文 (MS936)' },
+  { value: '950', decoder: 'big5', iconv: 'cp950', label: '繁体中文 (CP950)' },
 ];
 
 export type Encoding = (typeof ENCODINGS)[number]['value'];
@@ -27,6 +29,10 @@ export const DEFAULT_ENCODING: Encoding = '932';
 
 export function decoderFor(encoding: Encoding): string {
   return ENCODINGS.find((item) => item.value === encoding)?.decoder ?? 'utf-8';
+}
+
+export function iconvNameFor(encoding: Encoding): string {
+  return ENCODINGS.find((item) => item.value === encoding)?.iconv ?? 'utf-8';
 }
 
 /** RPG_RT.ini / EasyRPG 允许的编码写法（代码页数字或常见别名），旧版本配置里的名字也在这里兼容 */

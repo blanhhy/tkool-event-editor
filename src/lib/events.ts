@@ -91,7 +91,12 @@ export function isCatalogEmpty(catalog: EventCatalog): boolean {
 
 /** 四位地图编号，与 RM 的 Map0001 命名一致 */
 export function formatMapLabel(id: number, name: string): string {
-  return `Map${String(id).padStart(4, '0')}${name ? ` ${name}` : ''}`;
+  const label = `Map${String(id).padStart(4, '0')}`;
+  const trimmed = name.trim();
+  if (!trimmed) return label;
+  // 作者没改过名时地图树里存的就是 MAP0002 这类名字，避免重复显示
+  if (/^map\s*\d+$/i.test(trimmed) && Number(trimmed.replace(/\D/g, '')) === id) return label;
+  return `${label} ${trimmed}`;
 }
 
 /** 三位序号，用于公共事件 / 敌群 / 地图事件 */

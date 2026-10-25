@@ -2,6 +2,7 @@
 .reference/
 .screenshots/
 node_modules/
+testdata/
 dist/
 
 index*.zip

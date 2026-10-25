@@ -1,6 +1,5 @@
 import {
   EVENT_CATEGORY_LABELS,
-  countEventPages,
   formatEventLabel,
   formatMapLabel,
   isCatalogEmpty,
@@ -18,20 +17,39 @@ interface Props {
   /** 当前选中事件页的 pageKey */
   selected: string | null;
   onSelectPage: (page: EventPage) => void;
+  loading?: boolean;
+  progress?: { done: number; total: number } | null;
+  error?: string | null;
 }
 
-export default function EventManager({ catalog, hasProject, selected, onSelectPage }: Props) {
+export default function EventManager({
+  catalog,
+  hasProject,
+  selected,
+  onSelectPage,
+  loading = false,
+  progress = null,
+  error = null,
+}: Props) {
   if (!hasProject) {
     return <div className="treeEmpty">未打开工程</div>;
   }
 
-  const pageCount = countEventPages(catalog);
-  if (isCatalogEmpty(catalog) || pageCount === 0) {
-    return <div className="treeEmpty">暂未解析到事件</div>;
+  if (error) {
+    return <div className="treeEmpty">{error}</div>;
+  }
+
+  if (isCatalogEmpty(catalog)) {
+    return <div className="treeEmpty">{loading ? '正在读取事件…' : '未找到事件'}</div>;
   }
 
   return (
     <div className="tree eventTree" role="tree" aria-label="事件">
+      {loading && progress && (
+        <div className="treeHint">
+          {`正在解析地图事件 ${progress.done}/${progress.total}`}
+        </div>
+      )}
       <TreeBranch
         label={EVENT_CATEGORY_LABELS.common}
         icon={<FileTypeIcon icon="folder" size={16} />}
