@@ -1,3 +1,7 @@
+import addDirectorySvg from '../assets/jetbrains-icons/addDirectory.svg?raw';
+import addFileSvg from '../assets/jetbrains-icons/addFile.svg?raw';
+import refreshSvg from '../assets/jetbrains-icons/refresh.svg?raw';
+
 interface IconProps {
   size?: number;
   className?: string;
@@ -46,6 +50,37 @@ export function FileIcon({ size = 16, className }: IconProps) {
       <path d="M8.75 1.9v3.35h3.3" {...stroke} />
     </svg>
   );
+}
+
+/** 让 JetBrains 图标跟随按钮的 currentColor，避免与文本/箭头颜色不一致 */
+function monochrome(svg: string): string {
+  return svg.replace(/(fill|stroke)="#[0-9a-fA-F]{6}"/g, '$1="currentColor"');
+}
+
+const addFileIcon = monochrome(addFileSvg);
+const addDirectoryIcon = monochrome(addDirectorySvg);
+const refreshIcon = monochrome(refreshSvg);
+
+function JetBrainsIcon({ svg, size = 16, className }: IconProps & { svg: string }) {
+  return (
+    <span
+      className={className ? `uiIcon ${className}` : 'uiIcon'}
+      style={{ width: size, height: size }}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
+export function NewFileIcon({ size = 16, className }: IconProps) {
+  return <JetBrainsIcon svg={addFileIcon} size={size} className={className} />;
+}
+
+export function NewFolderIcon({ size = 16, className }: IconProps) {
+  return <JetBrainsIcon svg={addDirectoryIcon} size={size} className={className} />;
+}
+
+export function RefreshIcon({ size = 16, className }: IconProps) {
+  return <JetBrainsIcon svg={refreshIcon} size={size} className={className} />;
 }
 
 export function ExplorerIcon({ size = 20, className }: IconProps) {

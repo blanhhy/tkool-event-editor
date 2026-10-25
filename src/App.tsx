@@ -13,7 +13,7 @@ import MenuBar from './components/MenuBar';
 import ProjectMenu from './components/ProjectMenu';
 import type { ContextMenuItem } from './components/ContextMenu';
 import type { TextEditorApi } from './components/TextEditor';
-import { ChevronIcon, ExplorerIcon } from './components/icons';
+import { ChevronIcon, ExplorerIcon, NewFileIcon, NewFolderIcon, RefreshIcon } from './components/icons';
 import {
   readProjectConfig,
   writeProjectConfig,
@@ -345,9 +345,9 @@ export default function App() {
         }
       };
 
-      let name = '新建文本.txt';
+      let name = 'Untitled.txt';
       let index = 2;
-      while (await exists(name)) name = `新建文本 ${index++}.txt`;
+      while (await exists(name)) name = `Untitled ${index++}.txt`;
 
       const handle = await root.getFileHandle(name, { create: true });
       await (await handle.createWritable()).close();
@@ -358,6 +358,39 @@ export default function App() {
       setError('新建文件失败。');
     }
   }, [root, openFile]);
+
+  const newFolder = useCallback(async () => {
+    if (!root) return;
+    try {
+      if (!(await ensureWritePermission(root))) {
+        setError('无法新建文件夹：没有获得写入权限。');
+        return;
+      }
+
+      const exists = async (name: string) => {
+        try {
+          await root.getDirectoryHandle(name);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      let name = '新建文件夹';
+      let index = 2;
+      while (await exists(name)) name = `新建文件夹 ${index++}`;
+
+      await root.getDirectoryHandle(name, { create: true });
+      setTreeRefreshToken((token) => token + 1);
+    } catch (err: unknown) {
+      console.error(err);
+      setError('新建文件夹失败。');
+    }
+  }, [root]);
+
+  const refreshTree = useCallback(() => {
+    setTreeRefreshToken((token) => token + 1);
+  }, []);
 
   const saveAs = useCallback(async () => {
     if (!activeTabData || activeTabData.kind !== 'text') return;
@@ -583,18 +616,52 @@ export default function App() {
           style={{ '--side-panel-w': `${panelWidth}px` } as CSSProperties}
         >
           <div className="sidePanelInner">
-            <button
-              type="button"
-              className="sidePanelHeader"
-              aria-expanded={explorerOpen}
-              title={explorerOpen ? '折叠资源管理器' : '展开资源管理器'}
-              onClick={toggleExplorer}
-            >
-              <span className="chevron" data-expanded={explorerOpen ? 'true' : 'false'}>
-                <ChevronIcon size={12} />
-              </span>
-              资源管理器
-            </button>
+            <div className="sidePanelHeader">
+              <button
+                type="button"
+                className="sidePanelTitle"
+                aria-expanded={explorerOpen}
+                title={explorerOpen ? '折叠资源管理器' : '展开资源管理器'}
+                onClick={toggleExplorer}
+              >
+                <span className="chevron" data-expanded={explorerOpen ? 'true' : 'false'}>
+                  <ChevronIcon size={12} />
+                </span>
+                <span className="sidePanelTitleText">资源管理器</span>
+              </button>
+              <div className="sidePanelActions">
+                <button
+                  type="button"
+                  className="sidePanelAction"
+                  aria-label="新建文件"
+                  title="新建文件"
+                  disabled={!root}
+                  onClick={() => void newTextFile()}
+                >
+                  <NewFileIcon size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="sidePanelAction"
+                  aria-label="新建文件夹"
+                  title="新建文件夹"
+                  disabled={!root}
+                  onClick={() => void newFolder()}
+                >
+                  <NewFolderIcon size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="sidePanelAction"
+                  aria-label="刷新"
+                  title="刷新"
+                  disabled={!root}
+                  onClick={refreshTree}
+                >
+                  <RefreshIcon size={15} />
+                </button>
+              </div>
+            </div>
             <div className="sidePanelBody" data-collapsed={explorerOpen ? undefined : 'true'}>
               <FileTree
                 key={root ? projectSeq : 'empty'}
