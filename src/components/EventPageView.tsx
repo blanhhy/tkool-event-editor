@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Cmd } from '../lib/commandCodes';
 import {
   findCommandClusters,
@@ -228,6 +228,11 @@ function CommandRow({
   onHoverEnd?: () => void;
   active?: boolean;
 }) {
+  // 指令 10 是可插入新代码的空行，标成 @> 提示插入点；> 用标点配色
+  const isEmptySlot = line.code === Cmd.End;
+  // 默认样式里的名字不带空格
+  const displayName = line.name.replace(/\s+/g, '');
+
   return (
     <div
       className="commandRow"
@@ -240,19 +245,38 @@ function CommandRow({
       <span className="commandIndex">{line.index + 1}</span>
       <IndentGuides depth={line.indent} />
       <div
-        className="commandContent"
+        className="commandContent defaultContent"
         data-role={line.role}
         data-unknown={line.unknown ? 'true' : undefined}
       >
-        <span className="commandName">
-          {line.name}
-          {/* 指令 10 是可插入新代码的空行，标成 @> 提示插入点；> 用标点配色 */}
-          {line.code === Cmd.End && <span className="commandPunct">&gt;</span>}
-        </span>
-        {line.params.length > 0 && (
-          <span className="commandParams">{line.params.join(', ')}</span>
+        {isEmptySlot ? (
+          <>
+            <span className="commandName">@</span>
+            <span className="commandPunct">&gt;</span>
+          </>
+        ) : (
+          <>
+            {/* 没有专属编辑/渲染规则的指令统一显示成：@名字(裸参数, text="文本") */}
+            <span className="commandName">{`@${displayName}`}</span>
+            <span className="commandPunct">(</span>
+            {line.params.map((param, index) => (
+              <Fragment key={index}>
+                {/* 逗号是标点，不能跟着参数染成数字色 */}
+                {index > 0 && <span className="commandPunct">, </span>}
+                <span className="commandParams">{param}</span>
+              </Fragment>
+            ))}
+            {line.text !== null && (
+              <>
+                {/* 参数名 text 用气泡提示，与 @sleep 的提示一致 */}
+                {line.params.length > 0 && <span className="commandPunct">, </span>}
+                <span className="paramHint">text=</span>
+                <span className="commandText">{`"${line.text}"`}</span>
+              </>
+            )}
+            <span className="commandPunct">)</span>
+          </>
         )}
-        {line.text && <span className="commandText">{line.text}</span>}
         <DiagnosticMark diagnostics={diagnostics} />
       </div>
     </div>

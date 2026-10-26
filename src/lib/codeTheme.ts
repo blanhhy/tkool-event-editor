@@ -19,6 +19,8 @@ const PALETTE = {
   violet: '#c678dd',
   /** cyan：类型 / 常量 */
   cyan: '#56b6c2',
+  /** ivory：正文，标点随正文着色 */
+  ivory: '#abb2bf',
 } as const;
 
 export const SYNTAX_COLORS = {
@@ -28,8 +30,8 @@ export const SYNTAX_COLORS = {
   string: PALETTE.sage,
   /** 注释 */
   comment: PALETTE.stone,
-  /** 括号、反引号等标点（配合透明度弱化） */
-  punctuation: PALETTE.stone,
+  /** 括号、逗号等标点：与编辑器正文同色 */
+  punctuation: PALETTE.ivory,
   /** 数字 */
   number: PALETTE.chalky,
   /** 布尔字面量 */
