@@ -7,6 +7,7 @@ import {
   type Runtime,
 } from './environment';
 import { Cmd } from './commandCodes';
+import { COMMAND_SCHEMA, type SchemaCommand, type SchemaParamSlot } from './commandSchema.generated';
 import { findCommandMeta, type CommandLine } from './eventCommands';
 import type { EventPageRef } from './events';
 
@@ -16,7 +17,10 @@ import type { EventPageRef } from './events';
  * 数据库里的对象类型有限，指令参数只有两类：
  *   1. 基本值：整数、布尔、时间、配置枚举、文本字面量；
  *   2. 引用：用 id 指向数据库对象（开关 / 变量 / 角色 / 道具 / 公共事件……）。
- * 指令里的「常量或变量」寻址，则用 valueOrVariable 表示：值本身由数字或变量间接提供。
+ * 指令里的「常量或变量」寻址，则用 valueOrVariable 表示。
+ *
+ * 参数语义以 R48 的 schema 为准（见 commandSchema.generated.ts），
+ * 本文件只补充 R48 未覆盖的扩展指令与少量特例。
  */
 export type DbRefKind =
   | 'switch'
@@ -24,10 +28,16 @@ export type DbRefKind =
   | 'actor'
   | 'item'
   | 'skill'
+  | 'state'
   | 'enemy'
   | 'troop'
   | 'commonEvent'
   | 'class'
+  | 'battleCommand'
+  | 'tileset'
+  | 'terrain'
+  | 'animation'
+  | 'attribute'
   | 'map'
   | 'event';
 
@@ -61,251 +71,100 @@ export type ParamSpec =
       target: DbRefKind;
       label?: string;
       magic?: Readonly<Record<number, string>>;
+      /** 0 也是合法值（如变量 id 的「未使用」） */
+      allowZero?: boolean;
     }
   /** 「常量或变量」：实际取值由同组内的模式参数决定 */
   | { kind: 'valueOrVariable'; label?: string }
   /** 尚未建模，不做取值校验 */
   | { kind: 'any'; label?: string };
 
-/** 参数语义可能依赖同组其它参数（如「寻址模式」决定后面是 id 还是变量号） */
-export type ParamCondition = (params: readonly number[]) => boolean;
-
-export interface ParamSlot {
-  spec: ParamSpec;
-  /** 仅在条件成立时才校验该位置 */
-  when?: ParamCondition;
-}
-
-export interface CommandSpec {
-  code: number;
-  /** 最少参数个数（取自 EasyRPG Player 的 CmdSetup 声明） */
-  minParams: number;
-  /** 已建模的参数，按位置排列；未列出的尾随参数不校验 */
-  params?: ParamSlot[];
-  /** 指令文本存于 string 字段 */
-  usesText?: boolean;
-}
-
-const any = { kind: 'any' } as const;
-const text = { kind: 'text', label: '文本' } as const;
 const time = { kind: 'time', label: '时长' } as const;
-const int = (min?: number, max?: number, label?: string): ParamSpec => ({ kind: 'int', min, max, label });
-const ref = (
-  target: DbRefKind,
-  label?: string,
-  magic?: Readonly<Record<number, string>>,
-): ParamSpec => ({ kind: 'ref', target, label, magic });
-const enumOf = (options: Record<number, string>, label?: string): ParamSpec => ({
-  kind: 'enum',
-  options,
-  label,
-});
-/** 带条件的参数位置 */
-const when =
-  (spec: ParamSpec, condition: ParamCondition): ParamSlot => ({ spec, when: condition });
-const slot = (spec: ParamSpec): ParamSlot => ({ spec });
+const bool = { kind: 'bool' } as const;
 
-/** 只写最少参数个数；参数语义随后逐步补齐 */
-const MIN_PARAMS: Record<number, number> = {
-  [Cmd.CallCommonEvent]: 1,
-  [Cmd.ShowMessage]: 0,
-  [Cmd.MessageOptions]: 4,
-  [Cmd.ChangeFaceGraphic]: 3,
-  [Cmd.ShowChoice]: 1,
-  [Cmd.InputNumber]: 2,
-  [Cmd.ControlSwitches]: 4,
-  [Cmd.ControlVars]: 7,
-  [Cmd.TimerOperation]: 5,
-  [Cmd.ChangeGold]: 3,
-  [Cmd.ChangeItems]: 5,
-  [Cmd.ChangePartyMembers]: 3,
-  [Cmd.ChangeExp]: 6,
-  [Cmd.ChangeLevel]: 6,
-  [Cmd.ChangeParameters]: 6,
-  [Cmd.ChangeSkills]: 5,
-  [Cmd.ChangeEquipment]: 5,
-  [Cmd.ChangeHP]: 6,
-  [Cmd.ChangeSP]: 5,
-  [Cmd.ChangeCondition]: 4,
-  [Cmd.FullHeal]: 2,
-  [Cmd.SimulatedAttack]: 8,
-  [Cmd.ChangeHeroName]: 1,
-  [Cmd.ChangeHeroTitle]: 1,
-  [Cmd.ChangeSpriteAssociation]: 3,
-  [Cmd.ChangeActorFace]: 2,
-  [Cmd.ChangeVehicleGraphic]: 2,
-  [Cmd.ChangeSystemBGM]: 5,
-  [Cmd.ChangeSystemSFX]: 4,
-  [Cmd.ChangeSystemGraphics]: 2,
-  [Cmd.ChangeScreenTransitions]: 2,
-  [Cmd.EnemyEncounter]: 6,
-  [Cmd.OpenShop]: 4,
-  [Cmd.ShowInn]: 3,
-  [Cmd.EnterHeroName]: 3,
-  [Cmd.Teleport]: 3,
-  [Cmd.MemorizeLocation]: 3,
-  [Cmd.RecallToLocation]: 3,
-  [Cmd.EnterExitVehicle]: 0,
-  [Cmd.SetVehicleLocation]: 5,
-  [Cmd.ChangeEventLocation]: 4,
-  [Cmd.TradeEventLocations]: 2,
-  [Cmd.StoreTerrainID]: 4,
-  [Cmd.StoreEventID]: 4,
-  [Cmd.EraseScreen]: 1,
-  [Cmd.ShowScreen]: 1,
-  [Cmd.TintScreen]: 6,
-  [Cmd.FlashScreen]: 6,
-  [Cmd.ShakeScreen]: 4,
-  [Cmd.PanScreen]: 5,
-  [Cmd.WeatherEffects]: 2,
-  [Cmd.ShowPicture]: 14,
-  [Cmd.MovePicture]: 16,
-  [Cmd.ErasePicture]: 1,
-  [Cmd.ShowBattleAnimation]: 3,
-  [Cmd.PlayerVisibility]: 1,
-  [Cmd.FlashSprite]: 7,
-  [Cmd.MoveEvent]: 4,
-  [Cmd.ProceedWithMovement]: 0,
-  [Cmd.HaltAllMovement]: 0,
-  [Cmd.Wait]: 1,
-  [Cmd.PlayBGM]: 4,
-  [Cmd.FadeOutBGM]: 1,
-  [Cmd.MemorizeBGM]: 0,
-  [Cmd.PlayMemorizedBGM]: 0,
-  [Cmd.PlaySound]: 3,
-  [Cmd.PlayMovie]: 5,
-  [Cmd.KeyInputProc]: 5,
-  [Cmd.ChangeMapTileset]: 1,
-  [Cmd.ChangePBG]: 6,
-  [Cmd.ChangeEncounterSteps]: 1,
-  [Cmd.TileSubstitution]: 3,
-  [Cmd.TeleportTargets]: 6,
-  [Cmd.ChangeTeleportAccess]: 1,
-  [Cmd.EscapeTarget]: 5,
-  [Cmd.ChangeEscapeAccess]: 1,
-  [Cmd.OpenSaveMenu]: 0,
-  [Cmd.ChangeSaveAccess]: 1,
-  [Cmd.OpenMainMenu]: 0,
-  [Cmd.ChangeMainMenuAccess]: 1,
-  [Cmd.ConditionalBranch]: 6,
-  [Cmd.Label]: 0,
-  [Cmd.JumpToLabel]: 1,
-  [Cmd.Loop]: 0,
-  [Cmd.BreakLoop]: 0,
-  [Cmd.EndEventProcessing]: 0,
-  [Cmd.EraseEvent]: 0,
-  [Cmd.CallEvent]: 3,
-  [Cmd.Comment]: 0,
-  [Cmd.GameOver]: 0,
-  [Cmd.ReturntoTitleScreen]: 0,
-  // 2k3
-  [Cmd.ForceFlee]: 3,
-  [Cmd.EnableCombo]: 3,
-  [Cmd.ChangeClass]: 7,
-  [Cmd.ChangeBattleCommands]: 4,
-  [Cmd.OpenLoadMenu]: 0,
-  [Cmd.ExitGame]: 0,
-  [Cmd.ToggleAtbMode]: 0,
-  [Cmd.ToggleFullscreen]: 0,
-  [Cmd.OpenVideoOptions]: 0,
-  [Cmd.ChangeMonsterHP]: 5,
-  [Cmd.ChangeMonsterMP]: 4,
-  [Cmd.ChangeMonsterCondition]: 3,
-  [Cmd.ShowHiddenMonster]: 1,
-  [Cmd.ChangeBattleBG]: 0,
-  [Cmd.ShowBattleAnimationB]: 3,
-  [Cmd.ConditionalBranchB]: 5,
-  [Cmd.TerminateBattle]: 0,
-  // 结构标记
-  [Cmd.ShowMessage2]: 0,
-  [Cmd.ShowChoiceOption]: 1,
-  [Cmd.ShowChoiceEnd]: 0,
-  [Cmd.ElseBranch]: 0,
-  [Cmd.EndBranch]: 0,
-  [Cmd.EndLoop]: 0,
-  [Cmd.Comment2]: 0,
-  [Cmd.ElseBranchB]: 0,
-  [Cmd.EndBranchB]: 0,
-  [Cmd.VictoryHandler]: 0,
-  [Cmd.EscapeHandler]: 0,
-  [Cmd.DefeatHandler]: 0,
-  [Cmd.EndBattle]: 0,
-  [Cmd.Transaction]: 0,
-  [Cmd.NoTransaction]: 0,
-  [Cmd.EndShop]: 0,
-  [Cmd.Stay]: 0,
-  [Cmd.NoStay]: 0,
-  [Cmd.EndInn]: 0,
-  [Cmd.End]: 0,
-  // EasyRPG
-  [Cmd.EasyRpgTriggerEventAt]: 4,
-  [Cmd.EasyRpgPathfinder]: 13,
-  [Cmd.EasyRpgWaitForSingleMovement]: 6,
-  [Cmd.EasyRpgSetInterpreterFlag]: 2,
-  [Cmd.EasyRpgProcessJson]: 8,
-  [Cmd.EasyRpgCloneMapEvent]: 10,
-  [Cmd.EasyRpgDestroyMapEvent]: 2,
-  // Maniac：EasyRPG 的 CmdSetup 对应的是特定 Maniac 版本，
-  // 实测老工程里的参数个数会少一些（ManiacShowStringPicture 21、ManiacControlGlobalSave 1），
-  // 因此不校验个数
+/** 单条参数的语义；`whenIndex`/`whenEquals` 表示仅在另一参数取特定值时才生效 */
+interface ParamSlot {
+  position: number;
+  name?: string;
+  spec: ParamSpec;
+  whenIndex?: number;
+  whenEquals?: number[];
+  /** 该参数只在指定引擎里存在（2003 新增的参数） */
+  since?: Engine;
+}
+
+interface CommandSpec {
+  /** 最少参数个数，按引擎区分；null 表示未知（跳过个数校验） */
+  minParams: Record<Engine, number> | null;
+  params: ParamSlot[];
+}
+
+const slot = (position: number, spec: ParamSpec, name?: string): ParamSlot => ({ position, spec, name });
+/** 两个引擎都用同一个参数个数 */
+const same = (count: number): Record<Engine, number> => ({ '2k': count, '2k3': count });
+
+/**
+ * R48 未覆盖的指令：
+ *   - EasyRPG / Maniac 的扩展指令；
+ *   - 参数结构写在 X-code 里、且无法从 schema 推导出布局的个别指令。
+ * `Cmd.Wait` 在 R48 里由 wait_illogical_parameters 描述，但布局取决于数组长度，
+ * 这里按 EasyRPG 的实现补上：1 个参数是时长，2 个参数的第二位是「等待输入」标志（2k3）。
+ */
+const MANUAL_SPECS: Record<number, CommandSpec> = {
+  [Cmd.Wait]: {
+    minParams: { '2k': 1, '2k3': 1 },
+    params: [slot(0, time, 'secTenthCount'), { ...slot(1, bool, 'waitForKey'), since: '2k3' }],
+  },
+
+  // EasyRPG Player 扩展（最少参数个数取自 EasyRPG Player 的 CmdSetup）
+  [Cmd.EasyRpgTriggerEventAt]: { minParams: same(4), params: [] },
+  [Cmd.EasyRpgPathfinder]: { minParams: same(13), params: [] },
+  [Cmd.EasyRpgCallMovementAction]: { minParams: same(1), params: [] },
+  [Cmd.EasyRpgWaitForSingleMovement]: { minParams: same(6), params: [] },
+  [Cmd.EasyRpgAnimateVariable]: { minParams: same(1), params: [] },
+  [Cmd.EasyRpgSetInterpreterFlag]: { minParams: same(2), params: [] },
+  [Cmd.EasyRpgProcessJson]: { minParams: same(8), params: [] },
+  [Cmd.EasyRpgCloneMapEvent]: { minParams: same(10), params: [] },
+  [Cmd.EasyRpgDestroyMapEvent]: { minParams: same(2), params: [] },
+  [Cmd.EasyRpgStringPictureMenu]: { minParams: same(1), params: [] },
 };
 
-/** 已建模参数语义的指令（其余指令的取值暂不校验） */
-const PARAMS: Record<number, ParamSlot[]> = {
-  // 消息与注释的正文都是文本字面量
-  [Cmd.ShowMessage]: [slot(text)],
-  [Cmd.ShowMessage2]: [slot(text)],
-  [Cmd.Comment]: [slot(text)],
-  [Cmd.Comment2]: [slot(text)],
-  // 标签名同样是文本字面量
-  [Cmd.Label]: [slot(text)],
-  // 等待：参数 2 非 0 时优先，表示等待玩家输入
-  [Cmd.Wait]: [slot(time), slot({ kind: 'bool', label: '等待输入' })],
-  // 显示选项：参数为取消选项的处理方式（0 表示禁止取消）
-  [Cmd.ShowChoice]: [slot(int(0, undefined, '取消选项'))],
-  // 输入数字：位数 + 结果变量
-  [Cmd.InputNumber]: [slot(int(1, undefined, '位数')), slot(ref('variable', '变量'))],
-  // 控制开关：寻址模式 + 起止 id + 操作
-  //   模式 0/1（单个 / 范围）时参数 2、3 是开关 id；
-  //   模式 2 起是变量寻址，此时参数 3 未使用（常见为 0）
-  [Cmd.ControlSwitches]: [
-    slot(enumOf({ 0: '单个', 1: '范围', 2: '变量', 3: '变量范围', 4: '表达式' }, '寻址')),
-    when(ref('switch', '开关'), (params) => params[0] === 0 || params[0] === 1),
-    when(ref('switch', '开关'), (params) => params[0] === 1),
-    slot(enumOf({ 0: '关', 1: '开', 2: '切换' }, '操作')),
-  ],
-  // 更改金钱：[操作, 数值来源, 数值]
-  [Cmd.ChangeGold]: [
-    slot(enumOf({ 0: '增加', 1: '减少' }, '操作')),
-    slot(any),
-    slot({ kind: 'valueOrVariable', label: '数值' }),
-  ],
-  // 调用事件：目标类型决定 id 的含义
-  //   直接调用地图事件时，id 可以是本事件（魔法数 10005）
-  [Cmd.CallEvent]: [
-    slot(enumOf({ 0: '公共事件', 1: '地图事件', 2: '间接', 3: '变量', 4: '间接变量' }, '目标')),
-    when(ref('event', '事件', CHARACTER_MAGIC_IDS), (params) => params[0] === 1),
-    slot(any),
-  ],
-  // 调用公共事件
-  [Cmd.CallCommonEvent]: [slot(ref('commonEvent', '公共事件'))],
-};
+/** Maniac Patch 的参数个数随版本变化（实测老工程会少一些），因此只做指令集检查 */
+const MANIAC_SPEC: CommandSpec = { minParams: null, params: [] };
 
-export const COMMAND_SPECS: ReadonlyMap<number, CommandSpec> = new Map(
-  Object.entries(MIN_PARAMS).map(([code, minParams]) => {
-    const id = Number(code);
-    const params = PARAMS[id];
-    return [
-      id,
-      {
-        code: id,
-        minParams,
-        params,
-        usesText: params?.some((item) => item.spec.kind === 'text') ?? false,
-      } satisfies CommandSpec,
-    ];
-  }),
-);
+function toSpecs(command: SchemaCommand): ParamSlot[] {
+  return command.params.map((param: SchemaParamSlot) => ({
+    position: param.position,
+    name: param.name,
+    spec: param.spec,
+    whenIndex: param.when?.index,
+    whenEquals: param.when?.equals,
+    since: param.since,
+  }));
+}
+
+const SPECS: ReadonlyMap<number, CommandSpec> = (() => {
+  const map = new Map<number, CommandSpec>(
+    Object.entries(COMMAND_SCHEMA).map(([code, command]) => [
+      Number(code),
+      { minParams: command.minParams, params: toSpecs(command) },
+    ]),
+  );
+
+  for (const [code, spec] of Object.entries(MANUAL_SPECS)) {
+    map.set(Number(code), spec);
+  }
+  for (const code of MANIAC_COMMANDS) {
+    if (!map.has(code)) map.set(code, MANIAC_SPEC);
+  }
+
+  return map;
+})();
+
+/** 指令文本是否有意义（用于决定是否按文本块渲染） */
+export function commandUsesText(code: number): boolean {
+  return COMMAND_SCHEMA[code]?.usesText ?? false;
+}
 
 export interface CommandEnvironment {
   engine: Engine;
@@ -326,8 +185,14 @@ export interface Diagnostic {
 /** 校验单条指令：指令集归属 + 参数个数 + 参数取值 */
 export function validateCommand(line: CommandLine, env: CommandEnvironment): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
-  const push = (severity: Diagnostic['severity'], message: string) =>
+  // 同一位置在多个分派分支里可能被重复声明，因此按内容去重
+  const seen = new Set<string>();
+  const push = (severity: Diagnostic['severity'], message: string) => {
+    const key = `${severity}|${message}`;
+    if (seen.has(key)) return;
+    seen.add(key);
     diagnostics.push({ index: line.index, severity, message });
+  };
 
   if (!findCommandMeta(line.code)) {
     push('error', `未知指令 ${line.code}，可能来自未识别的事件指令扩展`);
@@ -347,52 +212,72 @@ export function validateCommand(line: CommandLine, env: CommandEnvironment): Dia
     push('error', '该指令只能在敌群（战斗）事件中使用');
   }
 
-  const spec = COMMAND_SPECS.get(line.code);
+  const spec = SPECS.get(line.code);
   if (!spec) return diagnostics;
 
   const params = line.params;
-  if (params.length < spec.minParams) {
-    push('error', `参数不足：需要 ${spec.minParams} 个，实际 ${params.length} 个`);
+  const minParams = spec.minParams?.[env.engine];
+  if (minParams !== undefined && params.length < minParams) {
+    push('error', `参数不足：${env.engine} 需要 ${minParams} 个，实际 ${params.length} 个`);
   }
 
-  for (const [position, item] of (spec.params ?? []).entries()) {
-    const value = params[position];
-    if (value === undefined) break;
-    if (item.when && !item.when(params)) continue;
+  for (const item of spec.params) {
+    const value = params[item.position];
+    if (value === undefined) continue;
+    // 2003 新增的参数在 2k 工程里不存在，跳过校验
+    if (item.since && item.since !== env.engine) continue;
+    if (item.whenIndex !== undefined && item.whenEquals) {
+      const actual = params[item.whenIndex];
+      if (!item.whenEquals.includes(actual)) continue;
+    }
 
-    const message = checkParam(item.spec, value, env);
-    if (message) push('error', `参数 ${position + 1}：${message}`);
+    const problem = checkParam(item.spec, value, env);
+    if (problem) {
+      push(problem.severity, `参数 ${item.position + 1}（${item.name ?? '?'}）：${problem.message}`);
+    }
   }
 
   return diagnostics;
 }
 
-function checkParam(param: ParamSpec, value: number, env: CommandEnvironment): string | null {
+function checkParam(
+  param: ParamSpec,
+  value: number,
+  env: CommandEnvironment,
+): { severity: Diagnostic['severity']; message: string } | null {
+  const error = (message: string) => ({ severity: 'error' as const, message });
+  // 补丁 / EasyRPG 会扩展枚举取值，此时越界只作提醒
+  const outOfRange = (message: string) => ({
+    severity: env.runtime === 'rpg_rt' ? ('error' as const) : ('warning' as const),
+    message,
+  });
+
   switch (param.kind) {
     case 'int':
-      if (!Number.isInteger(value)) return '必须是整数';
-      if (param.min !== undefined && value < param.min) return `不能小于 ${param.min}`;
-      if (param.max !== undefined && value > param.max) return `不能大于 ${param.max}`;
+      if (!Number.isInteger(value)) return error('必须是整数');
+      if (param.min !== undefined && value < param.min) return error(`不能小于 ${param.min}`);
+      if (param.max !== undefined && value > param.max) return error(`不能大于 ${param.max}`);
       return null;
 
     case 'time':
-      if (!Number.isInteger(value)) return '必须是整数';
-      if (value < 0) return '不能为负数';
+      if (!Number.isInteger(value)) return error('必须是整数');
+      if (value < 0) return error('不能为负数');
       return null;
 
     case 'bool':
-      if (value !== 0 && value !== 1) return '只能是 0 或 1';
+      if (value !== 0 && value !== 1) return outOfRange('只能是 0 或 1');
       return null;
 
     case 'enum':
-      return value in param.options ? null : `取值 ${value} 不在允许范围内`;
+      return value in param.options ? null : outOfRange(`取值 ${value} 不在允许范围内`);
 
     case 'ref': {
       // 10001 起是解释器的魔法数（玩家 / 载具 / 事件自身），不是数据库 id
       if (param.magic && value in param.magic) return null;
-      if (!Number.isInteger(value) || value < 1) return 'id 必须是从 1 开始的整数';
+      if (param.allowZero && value === 0) return null;
+      if (!Number.isInteger(value) || value < 1) return error('id 必须是从 1 开始的整数');
       const lookup = env.lookup?.[param.target];
-      if (lookup && !lookup(value)) return `引用的对象 ${value} 不存在`;
+      if (lookup && !lookup(value)) return error(`引用的对象 ${value} 不存在`);
       return null;
     }
 
@@ -404,9 +289,6 @@ function checkParam(param: ParamSpec, value: number, env: CommandEnvironment): s
 }
 
 /** 校验整页；返回的每条诊断都带有对应的指令下标 */
-export function validateEventPage(
-  lines: CommandLine[],
-  env: CommandEnvironment,
-): Diagnostic[] {
+export function validateEventPage(lines: CommandLine[], env: CommandEnvironment): Diagnostic[] {
   return lines.flatMap((line) => validateCommand(line, env));
 }
