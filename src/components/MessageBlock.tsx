@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { splitCommandText, textFitsCommandLimits, type CommandLine } from '../lib/eventCommands';
+import {
+  splitCommandText,
+  textFitsCommandLimits,
+  stripNewlines,
+  type CommandLine,
+} from '../lib/eventCommands';
 
 interface Props {
   /** 消息块：首行 ShowMessage + 若干 ShowMessage2 续行 */
@@ -18,7 +23,8 @@ interface Props {
  * 因此输入框内每一行的起始位置天然对齐。
  */
 export default function MessageBlock({ lines, onSave }: Props) {
-  const original = lines.map((line) => line.text ?? '').join('\n');
+  // 一条指令就是一行：残留的换行符直接剔除，否则会多出视觉行、行号错位
+  const original = lines.map((line) => stripNewlines(line.text ?? '')).join('\n');
   const [value, setValue] = useState(original);
   const [draft, setDraft] = useState(original);
   const [editing, setEditing] = useState(false);

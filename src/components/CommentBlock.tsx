@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { splitCommandText, textFitsCommandLimits, type CommandLine } from '../lib/eventCommands';
+import {
+  COMMENT_LIMITS,
+  splitCommandText,
+  stripNewlines,
+  type CommandLine,
+} from '../lib/eventCommands';
 
 interface Props {
   /** 注释块：首行 Comment + 若干 Comment2 续行 */
@@ -18,7 +23,8 @@ interface Props {
  * 三引号只是视觉分隔，不占行号；行号只对应实际指令。
  */
 export default function CommentBlock({ lines, onSave }: Props) {
-  const original = lines.map((line) => line.text ?? '').join('\n');
+  // 一条指令就是一行：残留的换行符直接剔除，否则会多出视觉行、行号错位
+  const original = lines.map((line) => stripNewlines(line.text ?? '')).join('\n');
   const [value, setValue] = useState(original);
   const [draft, setDraft] = useState(original);
   const [editing, setEditing] = useState(false);
@@ -41,9 +47,9 @@ export default function CommentBlock({ lines, onSave }: Props) {
 
   function commit() {
     setEditing(false);
-    // 数据库里每行单独存储，换行会变成额外的续行指令；
-    // 先按「每行宽度上限 + 最多 4 行」折好，展示也用折行后的结果。
-    const nextLines = splitCommandText(draft);
+    // 数据库里每行单独存储，换行会变成额外的续行指令。
+    // 注释没有行列限制（2000 编辑器那套只是软限制），因此只按换行拆分。
+    const nextLines = splitCommandText(draft, COMMENT_LIMITS);
     setValue(nextLines.join('\n'));
     onSave?.(draft);
   }
@@ -57,6 +63,9 @@ export default function CommentBlock({ lines, onSave }: Props) {
   const isMultiLine = displayLines.length > 1;
   const firstNumber = lines[0].index + 1;
 
+  // 一条指令占一个行号：文本里的换行已在显示前剔除，不再产生额外的视觉行
+  const gutter = displayLines.map((_, index) => firstNumber + index);
+
   return (
     <div className="commentBlock" role="listitem">
       {isMultiLine && (
@@ -68,8 +77,8 @@ export default function CommentBlock({ lines, onSave }: Props) {
 
       <div key="body" className="commandRow">
         <div className="commandIndex commentIndex">
-          {displayLines.map((_, index) => (
-            <div key={index}>{firstNumber + index}</div>
+          {gutter.map((number, index) => (
+            <div key={index}>{number ?? '\u00A0'}</div>
           ))}
         </div>
 
@@ -83,18 +92,7 @@ export default function CommentBlock({ lines, onSave }: Props) {
                 value={draft}
                 rows={Math.max(1, displayLines.length)}
                 spellCheck={false}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  // 即将超出「每行宽度 / 总行数」限制时直接忽略这次输入
-                  if (!textFitsCommandLimits(next)) {
-                    const input = event.target;
-                    const caret = input.selectionStart;
-                    input.value = draft;
-                    input.setSelectionRange(Math.max(0, caret - 1), Math.max(0, caret - 1));
-                    return;
-                  }
-                  setDraft(next);
-                }}
+                onChange={(event) => setDraft(event.target.value)}
                 onBlur={commit}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') {

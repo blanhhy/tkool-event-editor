@@ -251,10 +251,28 @@ export type RenderRow =
 /** 可编辑的文本块类型：注释（Comment）与消息（ShowMessage）共用一套读写规则 */
 export type TextBlockKind = 'comment' | 'message';
 
+/** 文本块的编辑限制 */
+export interface CommandLimits {
+  /** 一行最多容纳的半角字符数（全角按两个半角计）；null 表示不限制 */
+  maxLineWidth: number | null;
+  /** 最多行数；null 表示不限制 */
+  maxLines: number | null;
+}
+
 /** 一行最多容纳的半角字符数（全角按两个半角计） */
 export const MAX_LINE_WIDTH = 64;
 /** 一条指令最多拆成的行数（RPG_RT 对话框上限） */
 export const MAX_LINES = 4;
+
+/** 消息：受对话框 4 行 × 64 半角的限制 */
+export const MESSAGE_LIMITS: CommandLimits = { maxLineWidth: MAX_LINE_WIDTH, maxLines: MAX_LINES };
+
+/**
+ * 注释：行宽与行数只是 2000 编辑器的软限制，
+ * 运行时会把 Comment / Comment2 一路拼下去（EasyRPG 的 CommandComment 也是无上限的），
+ * 因此这里不做任何限制。
+ */
+export const COMMENT_LIMITS: CommandLimits = { maxLineWidth: null, maxLines: null };
 
 /** 粗略的东亚宽字符判定：全角字符占两个半角位 */
 function isWideChar(code: number): boolean {
@@ -274,45 +292,68 @@ function isWideChar(code: number): boolean {
 }
 
 /**
- * 按「每行最多 MAX_LINE_WIDTH 个半角、最多 MAX_LINES 行」把编辑文本拆成多行。
+ * 按给定限制把编辑文本拆成多行。
  * 换行本身不会写进数据：每一行在 LCF 里都是独立的指令。
  */
-export function splitCommandText(text: string): string[] {
+export function splitCommandText(text: string, limits: CommandLimits = MESSAGE_LIMITS): string[] {
+  const { maxLineWidth, maxLines } = limits;
   const result: string[] = [];
 
-  for (const raw of text.split('\n')) {
+  for (const raw of splitLines(text)) {
+    if (maxLineWidth === null) {
+      result.push(raw);
+      if (maxLines !== null && result.length >= maxLines) break;
+      continue;
+    }
+
     let current = '';
     let width = 0;
 
     for (const char of raw) {
       const charWidth = isWideChar(char.codePointAt(0) ?? 0) ? 2 : 1;
-      if (width + charWidth > MAX_LINE_WIDTH && current) {
+      if (width + charWidth > maxLineWidth && current) {
         result.push(current);
         current = '';
         width = 0;
-        if (result.length >= MAX_LINES) return result;
+        if (maxLines !== null && result.length >= maxLines) return result;
       }
       current += char;
       width += charWidth;
     }
 
     result.push(current);
-    if (result.length >= MAX_LINES) return result;
+    if (maxLines !== null && result.length >= maxLines) break;
   }
 
-  return result.slice(0, MAX_LINES);
+  return maxLines === null ? result : result.slice(0, maxLines);
 }
 
-/** 输入是否仍在「每行宽度 + 总行数」限制内（编辑时用于拒绝超限输入） */
-export function textFitsCommandLimits(text: string): boolean {
-  const lines = text.split('\n');
-  if (lines.length > MAX_LINES) return false;
+/** 输入是否仍在给定限制内（编辑时用于拒绝超限输入） */
+export function textFitsCommandLimits(text: string, limits: CommandLimits = MESSAGE_LIMITS): boolean {
+  const lines = splitLines(text);
+  if (limits.maxLines !== null && lines.length > limits.maxLines) return false;
+  if (limits.maxLineWidth === null) return true;
 
   return lines.every((line) => {
     let width = 0;
     for (const char of line) width += isWideChar(char.codePointAt(0) ?? 0) ? 2 : 1;
-    return width <= MAX_LINE_WIDTH;
+    return width <= limits.maxLineWidth!;
   });
+}
+
+/**
+ * 剔除指令文本里的换行符。
+ * LCF 里每一行都是独立的指令（Comment / Comment2 等），文本本身不该含换行；
+ * 但官方编辑器偶尔会把换行写进字符串（还会导致重读后行数对不上），
+ * 这里统一视为数据残留，直接去掉，避免多出视觉行、行号错位。
+ */
+export function stripNewlines(text: string): string {
+  return text.replace(/[\r\n]+/g, '');
+}
+
+/** 统一的换行切分：兼容 CRLF / CR / LF */
+function splitLines(text: string): string[] {
+  return text.split(/\r\n|\r|\n/);
 }
 
 /**

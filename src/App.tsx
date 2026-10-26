@@ -53,6 +53,8 @@ import {
 } from './lib/events';
 import {
   buildCommandLines,
+  COMMENT_LIMITS,
+  MESSAGE_LIMITS,
   splitCommandText,
   type CommandLine,
   type TextBlockKind,
@@ -538,7 +540,7 @@ export default function App() {
         const update = {
           startIndex: lines[0].index,
           endIndex: lines[lines.length - 1].index,
-          lines: splitCommandText(text),
+          lines: splitCommandText(text, kind === 'comment' ? COMMENT_LIMITS : MESSAGE_LIMITS),
         };
         const commands =
           kind === 'comment'
