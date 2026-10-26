@@ -130,11 +130,12 @@ export default function EventPageView({
 
       {/* 刷新期间保留旧内容，避免整页被占位文本替换造成闪烁 */}
       {error && <div className="eventPageEmpty eventPageError">{error}</div>}
-      {!error && commands.length === 0 && (
-        <div className="eventPageEmpty">{loading ? '读取事件页…' : '事件页没有指令'}</div>
+      {!error && commands.length === 0 && loading && (
+        <div className="eventPageEmpty">读取事件页…</div>
       )}
 
-      {commands.length > 0 && (
+      {/* 空事件页也保留页尾的插入空白行；读取中且尚无内容时不显示 */}
+      {!error && (commands.length > 0 || !loading) && (
         <div className="commandList" role="list" ref={listRef}>
           {groupCommandLines(commands).map((row) => {
             // 文本块的簇是整块，取首行；闭合符/否则标记的簇落回外层块头
@@ -180,7 +181,7 @@ export default function EventPageView({
             );
           })}
 
-          {/* 末尾插入点：始终留出一行空白，滚到底部时可见 */}
+          {/* 末尾插入点：始终留出一行空白，滚到底部时可见；行号不参与指令计数 */}
           <div
             className="commandRow insertRow"
             data-command-index={commands.length}
@@ -190,7 +191,7 @@ export default function EventPageView({
             }
             onMouseLeave={scheduleHide}
           >
-            <span className="commandIndex" />
+            <span className="commandIndex">{commands.length + 1}</span>
           </div>
 
           {/* 当前簇的插入按钮：统一渲染，闭合符的簇也能定位到块头 */}
@@ -205,7 +206,11 @@ export default function EventPageView({
         </div>
       )}
 
-      <CommandPicker open={insertTarget !== null} onClose={() => setInsertTarget(null)} />
+      <CommandPicker
+        open={insertTarget !== null}
+        onClose={() => setInsertTarget(null)}
+        environment={environment}
+      />
     </div>
   );
 }

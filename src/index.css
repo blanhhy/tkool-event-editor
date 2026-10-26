@@ -37,7 +37,7 @@
   --side-panel-w: 248px;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', 'Microsoft YaHei UI', 'Noto Sans SC', monospace;
 }
 
 * {
@@ -1449,10 +1449,9 @@ button {
 }
 
 .commandPicker {
-  width: 560px;
-  max-width: 90vw;
-  height: 420px;
-  max-height: 80vh;
+  width: 640px;
+  max-width: 92vw;
+  max-height: 84vh;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border-strong);
@@ -1493,6 +1492,74 @@ button {
 .commandPickerBody {
   flex: 1;
   min-height: 0;
+  overflow: auto;
+}
+
+/* 页签：官方指令是序号，扩展指令集用指令集名 */
+.commandPickerTabs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+}
+
+.commandPickerTab {
+  min-width: 36px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 3px 3px 0 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.commandPickerTab:hover {
+  color: var(--color-text);
+}
+
+.commandPickerTab[data-active='true'] {
+  border-color: var(--color-border-strong);
+  background: var(--color-editor-bg);
+  color: var(--color-text);
+}
+
+.commandPickerGrid {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px 10px;
+}
+
+.commandPickerColumn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.commandPickerItem {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.commandPickerItem:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-hover);
 }
 
 .cmHost {
