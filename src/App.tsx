@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -60,12 +61,17 @@ import {
   invalidateEventCache,
   loadEventCatalog,
   loadEventPageCommands,
+  saveCommandParameters,
   saveCommentBlock,
   saveMessageBlock,
+  setPreferredEngine,
+  type EventCatalogResult,
   type EventLoadProgress,
 } from './lib/lcfEvents';
 import { saveRecentProject, type RecentProject } from './lib/recent';
 import { SYNTAX_COLORS } from './lib/codeTheme';
+import { type CommandEnvironment } from './lib/commandSpec';
+import type { Engine, Runtime } from './lib/environment';
 
 const DEFAULT_PANEL_WIDTH = 248;
 const MIN_PANEL_WIDTH = 180;
@@ -77,6 +83,8 @@ const SYNTAX_STYLE = {
   '--syntax-string': SYNTAX_COLORS.string,
   '--syntax-comment': SYNTAX_COLORS.comment,
   '--syntax-punctuation': SYNTAX_COLORS.punctuation,
+  '--syntax-number': SYNTAX_COLORS.number,
+  '--syntax-boolean': SYNTAX_COLORS.boolean,
 } as CSSProperties;
 
 function isUserCancellation(err: unknown): boolean {
@@ -87,6 +95,8 @@ export default function App() {
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
   const [title, setTitle] = useState<string | null>(null);
   const [encoding, setEncoding] = useState<Encoding>(DEFAULT_ENCODING);
+  const [engine, setEngine] = useState<Engine>('2k');
+  const [runtime, setRuntime] = useState<Runtime>('rpg_rt');
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +139,13 @@ export default function App() {
     (
       handle: FileSystemDirectoryHandle,
       enc: Encoding,
-      options: { silent?: boolean } = {},
+      options: {
+        silent?: boolean;
+        /** 配置中记录的引擎；为空则自动探测 */
+        engine?: Engine | null;
+        /** 读取完成后回调实际采用的引擎与运行环境 */
+        onResolved?: (result: EventCatalogResult) => void;
+      } = {},
     ) => {
       const token = eventsLoadRef.current + 1;
       eventsLoadRef.current = token;
@@ -142,6 +158,7 @@ export default function App() {
       setEventsLoading(true);
 
       return loadEventCatalog(handle, enc, {
+        engine: options.engine ?? null,
         isCancelled: () => eventsLoadRef.current !== token,
         onUpdate: silent
           ? undefined
@@ -154,8 +171,10 @@ export default function App() {
               if (eventsLoadRef.current === token) setEventsProgress(progress);
             },
       })
-        .then((next) => {
-          if (eventsLoadRef.current === token) setCatalog(next);
+        .then((result) => {
+          if (eventsLoadRef.current !== token) return;
+          setCatalog(result.catalog);
+          options.onResolved?.(result);
         })
         .catch((err: unknown) => {
           if (eventsLoadRef.current === token) {
@@ -189,6 +208,12 @@ export default function App() {
         const nextEncoding = normalizeEncoding(preferred) ?? config?.encoding ?? info.encoding;
         const nextTitle = (await readGameTitle(handle, nextEncoding)) ?? info.title;
 
+        // 配置里存了引擎就以配置为准；否则先按 2k 读，解析后回填并写回配置
+        const configuredEngine = config?.engine ?? null;
+        setPreferredEngine(configuredEngine);
+        setEngine(configuredEngine ?? '2k');
+        setRuntime(config?.runtime ?? 'rpg_rt');
+
         closeAllTabs();
         setProjectSeq((seq) => seq + 1);
         setRoot(handle);
@@ -199,7 +224,26 @@ export default function App() {
         setClipboard(null);
         setRenamingPath(null);
 
-        loadEventsFor(handle, nextEncoding);
+        loadEventsFor(handle, nextEncoding, {
+          engine: configuredEngine,
+          onResolved: (result) => {
+            // 探测结果同样作为后续读取的首选引擎
+            setPreferredEngine(result.engine);
+            setEngine(result.engine);
+            const resolvedRuntime = config?.runtime ?? result.runtime;
+            setRuntime(resolvedRuntime);
+            // 配置里缺少引擎 / 运行环境时，把探测结果补进去
+            if (!config?.engine || !config?.runtime) {
+              void writeProjectConfig(handle, {
+                encoding: nextEncoding,
+                engine: result.engine,
+                runtime: resolvedRuntime,
+              }).then((written) => {
+                if (!written) console.warn('未能写入 RPG_RT.json 的引擎配置。');
+              });
+            }
+          },
+        });
 
         await saveRecentProject({
           id: handle.name,
@@ -255,6 +299,9 @@ export default function App() {
     setRoot(null);
     setTitle(null);
     setEncoding(DEFAULT_ENCODING);
+    setEngine('2k');
+    setRuntime('rpg_rt');
+    setPreferredEngine(null);
     setSelected(null);
     setActiveEventPage(null);
     setCatalog(emptyCatalog());
@@ -271,9 +318,12 @@ export default function App() {
       setEncoding(next);
       if (!root) return;
 
-      loadEventsFor(root, next);
+      loadEventsFor(root, next, {
+        engine,
+        onResolved: (result) => setEngine(result.engine),
+      });
 
-      void writeProjectConfig(root, next).then((written) => {
+      void writeProjectConfig(root, { encoding: next, engine, runtime }).then((written) => {
         if (!written) console.warn('未能写入 RPG_RT.json，编码设置仅在本次会话生效。');
       });
 
@@ -291,7 +341,7 @@ export default function App() {
         });
       });
     },
-    [root, loadEventsFor],
+    [root, loadEventsFor, engine, runtime],
   );
 
   const openFile = useCallback(
@@ -413,13 +463,13 @@ export default function App() {
     invalidateEventCache();
 
     // 先等事件树读完，再逐个重读事件页；内置浏览器并发枚举目录会挂起
-    void loadEventsFor(root, encoding, { silent: true }).then(async () => {
+    void loadEventsFor(root, encoding, { silent: true, engine }).then(async () => {
       for (const tab of tabs) {
         if (tab.kind !== 'event' || !tab.eventPage) continue;
         await loadEventTab(tab.path, tab.eventPage);
       }
     });
-  }, [root, encoding, tabs, loadEventsFor, loadEventTab]);
+  }, [root, encoding, engine, tabs, loadEventsFor, loadEventTab]);
 
   const handleDropFile = useCallback(
     (path: string) => {
@@ -504,6 +554,34 @@ export default function App() {
         console.error(err);
         const label = kind === 'comment' ? '注释' : '消息';
         setError(err instanceof Error ? `保存${label}失败：${err.message}` : `保存${label}失败。`);
+      }
+    },
+    [root, encoding],
+  );
+
+  /** 写回单条指令的参数（如等待指令的模式与时长） */
+  const saveEventParameters = useCallback(
+    async (tab: EditorTab, line: CommandLine, parameters: number[]) => {
+      if (!root || !tab.eventPage) return;
+
+      try {
+        if (!(await ensureWritePermission(root))) {
+          setError('无法保存：没有获得写入权限。');
+          return;
+        }
+
+        const commands = await saveCommandParameters(root, encoding, tab.eventPage, {
+          index: line.index,
+          parameters,
+        });
+        setTabs((prev) =>
+          prev.map((item) =>
+            item.path === tab.path ? { ...item, commands: buildCommandLines(commands) } : item,
+          ),
+        );
+      } catch (err: unknown) {
+        console.error(err);
+        setError(err instanceof Error ? `保存参数失败：${err.message}` : '保存参数失败。');
       }
     },
     [root, encoding],
@@ -845,6 +923,26 @@ export default function App() {
   const canEditActive = activeTabData?.kind === 'text' && !!activeTabData.editable;
   const hasDirtyText = tabs.some((tab) => tab.kind === 'text' && tab.editable && tab.dirty);
 
+  /**
+   * 事件指令的校验环境：引擎与运行环境决定指令集归属，
+   * 数据库对象集合用于检查 id 引用是否有效。
+   */
+  const commandEnvironment = useMemo<CommandEnvironment>(() => {
+    const commonEvents = new Set(catalog.commonEvents.map((event) => event.id));
+    const troops = new Set(catalog.troops.map((event) => event.id));
+    const maps = new Set(catalog.maps.map((map) => map.id));
+
+    return {
+      engine,
+      runtime,
+      lookup: {
+        commonEvent: (id) => commonEvents.has(id),
+        troop: (id) => troops.has(id),
+        map: (id) => maps.has(id),
+      },
+    };
+  }, [catalog, engine, runtime]);
+
   const treeActions: TreeActions = {
     clipboard,
     renamingPath,
@@ -1100,6 +1198,8 @@ export default function App() {
           onCursorChange={(line, column) => setCursor({ line, column })}
           editorApiRef={editorApiRef}
           onSaveTextBlock={saveEventTextBlock}
+          onSaveParameters={saveEventParameters}
+          commandEnvironment={commandEnvironment}
         />
       </div>
 

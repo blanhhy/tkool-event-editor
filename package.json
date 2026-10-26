@@ -6,6 +6,7 @@
   "description": "RPG Maker 2000/2003 事件编辑器 — IDE 式界面",
   "scripts": {
     "dev": "vite",
+    "host": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"

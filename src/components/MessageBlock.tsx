@@ -10,10 +10,11 @@ interface Props {
 
 /**
  * 显示消息渲染：
- *   单行 → showMessage(`内容`)
+ *   单行 → @message(`内容`)
  *   多行 → 续行文本与首行内容左对齐，闭合反引号跟在最后一行之后
  *
- * 编辑时只保留 showMessage(` 前缀，输入框紧随其后，
+ * 事件指令不是函数调用，用 `@` 前缀标记为裸指令（暂用函数配色）；
+ * 编辑时只保留 `@message(` 前缀，输入框紧随其后，
  * 因此输入框内每一行的起始位置天然对齐。
  */
 export default function MessageBlock({ lines, onSave }: Props) {
@@ -68,7 +69,7 @@ export default function MessageBlock({ lines, onSave }: Props) {
               className="messageLine"
               onClick={() => inputRef.current?.focus()}
             >
-              <span className="messageFn">showMessage</span>
+              <span className="messageDirective">@message</span>
               <span className="messagePunct">(`</span>
               <textarea
                 ref={inputRef}
@@ -100,7 +101,7 @@ export default function MessageBlock({ lines, onSave }: Props) {
           ) : (
             <div className="messageCode" onClick={startEditing}>
               <div className="messageLine">
-                <span className="messageFn">showMessage</span>
+                <span className="messageDirective">@message</span>
                 <span className="messagePunct">(`</span>
                 <span className="messageString">{displayLines[0] || '\u00A0'}</span>
                 {displayLines.length === 1 && <span className="messagePunct">`)</span>}

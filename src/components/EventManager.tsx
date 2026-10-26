@@ -1,6 +1,7 @@
 import {
   EVENT_CATEGORY_LABELS,
   formatEventLabel,
+  formatMapEventLabel,
   formatMapLabel,
   isCatalogEmpty,
   pageKey,
@@ -126,7 +127,11 @@ function EventObjectRow({
   selected: string | null;
   onSelectPage: (page: EventPage, label: string) => void;
 }) {
-  const eventLabel = formatEventLabel(event.id, event.name);
+  // 地图事件用 EV0001 这类编号；名字就是默认名时不再重复显示
+  const eventLabel =
+    event.category === 'map'
+      ? formatMapEventLabel(event.id, event.name)
+      : formatEventLabel(event.id, event.name);
 
   return (
     <TreeBranch

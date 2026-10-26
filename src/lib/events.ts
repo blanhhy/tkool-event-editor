@@ -103,3 +103,14 @@ export function formatMapLabel(id: number, name: string): string {
 export function formatEventLabel(id: number, name: string): string {
   return `${String(id).padStart(3, '0')}${name ? ` ${name}` : ''}`;
 }
+
+/**
+ * 地图事件：RPG Maker 新建事件时会把名字写成 EV0001 这类默认名，
+ * 与自己的默认名相同就只显示编号，避免「EV0001 EV0001」。
+ */
+export function formatMapEventLabel(id: number, name: string): string {
+  const label = `EV${String(id).padStart(4, '0')}`;
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.toUpperCase() === label) return label;
+  return `${label} ${trimmed}`;
+}

@@ -1,6 +1,7 @@
-import { lazy, Suspense, useState, type DragEvent, type MutableRefObject } from 'react';
+import { lazy, Suspense, useMemo, useState, type DragEvent, type MutableRefObject } from 'react';
 import { formatBytes, kindLabel, type FileKind } from '../lib/file';
 import type { CommandLine, TextBlockKind } from '../lib/eventCommands';
+import type { CommandEnvironment } from '../lib/commandSpec';
 import type { EventPageRef } from '../lib/events';
 import type { Encoding } from '../lib/project';
 import EventPageView from './EventPageView';
@@ -46,6 +47,9 @@ interface Props {
     lines: CommandLine[],
     text: string,
   ) => void;
+  onSaveParameters?: (tab: EditorTab, line: CommandLine, parameters: number[]) => void;
+  /** 事件指令的校验环境（引擎 / 运行环境 / 数据库引用） */
+  commandEnvironment?: CommandEnvironment;
 }
 
 const DRAG_TYPE = 'application/x-tkool-file';
@@ -61,9 +65,17 @@ export default function EditorArea({
   onCursorChange,
   editorApiRef,
   onSaveTextBlock,
+  onSaveParameters,
+  commandEnvironment,
 }: Props) {
   const active = tabs.find((tab) => tab.path === activeId) ?? null;
   const [dropActive, setDropActive] = useState(false);
+
+  // 事件页的校验环境带上所在分类：战斗指令只能出现在敌群事件里
+  const eventEnvironment = useMemo(() => {
+    if (!commandEnvironment) return undefined;
+    return { ...commandEnvironment, scope: active?.eventPage?.category };
+  }, [commandEnvironment, active?.eventPage?.category]);
 
   const hasFileDrag = (event: DragEvent) => event.dataTransfer.types.includes(DRAG_TYPE);
 
@@ -169,6 +181,10 @@ export default function EditorArea({
             loading={active.eventLoading ?? false}
             error={active.eventError ?? null}
             onSaveBlock={(kind, lines, text) => onSaveTextBlock?.(active, kind, lines, text)}
+            onSaveParameters={(line, parameters) =>
+              onSaveParameters?.(active, line, parameters)
+            }
+            environment={eventEnvironment}
           />
         )}
 

@@ -1041,6 +1041,29 @@ button {
   color: var(--color-text-dim);
 }
 
+/* 页头的问题数气泡（Hover 后是前几条诊断） */
+.eventPageDiagnosticCount {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(255, 139, 128, 0.14);
+  color: #ff8b80;
+  font-size: 11.5px;
+  cursor: help;
+}
+
+/* 行尾的问题标记 */
+.commandDiagnostic {
+  flex: 0 0 auto;
+  margin-left: 2px;
+  color: #ff8b80;
+  cursor: help;
+}
+
+.commandDiagnostic[data-severity='warning'] {
+  color: var(--color-warning-text);
+}
+
 .eventPageEmpty {
   padding: 18px 16px;
   font-size: 12.5px;
@@ -1223,12 +1246,12 @@ button {
   align-items: flex-start;
 }
 
-/* 续行内容与首行反引号之后的内容左对齐（showMessage(` 共 13 个半角字符） */
+/* 续行内容与首行反引号之后的内容左对齐（@message(` 共 10 个半角字符） */
 .messageContinuation {
-  padding-left: 13ch;
+  padding-left: 10ch;
 }
 
-.messageFn {
+.messageDirective {
   flex: 0 0 auto;
   color: var(--syntax-function);
 }
@@ -1263,6 +1286,59 @@ button {
   font: inherit;
   line-height: inherit;
   white-space: pre-wrap;
+  caret-color: #7fb0ff;
+}
+
+/* ── 等待指令（11410） ───────────────────────────────── */
+
+/* 单行表达式，各片段紧挨着排列 */
+.waitContent {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  cursor: text;
+}
+
+.waitPunct {
+  flex: 0 0 auto;
+  color: var(--syntax-punctuation);
+  opacity: 0.6;
+  user-select: none;
+}
+
+.waitNumber {
+  flex: 0 0 auto;
+  color: var(--syntax-number);
+}
+
+.waitBoolean {
+  flex: 0 0 auto;
+  color: var(--syntax-boolean);
+}
+
+/* LSP 风格的参数名 / 单位提示气泡 */
+.paramHint {
+  flex: 0 0 auto;
+  margin: 0 3px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--color-text-dim);
+  font-size: 11.5px;
+  user-select: none;
+}
+
+/* 编辑态输入框：无边框、透明背景，只占内容宽度 */
+.waitInput {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--syntax-number);
+  font: inherit;
+  line-height: inherit;
   caret-color: #7fb0ff;
 }
 

@@ -1,4 +1,5 @@
 import type { Database, Event as RpgEvent, EventCommand, MapUnit } from 'rpgrt';
+import { detectRuntime, type Engine, type Runtime } from './environment';
 import type { EventCatalog, EventObject, EventPageRef } from './events';
 import { iteratorOf } from './fs';
 import { iconvNameFor, type Encoding } from './project';
@@ -9,10 +10,20 @@ export interface EventLoadProgress {
 }
 
 export interface EventLoadOptions {
+  /** 配置中记录的引擎；为空时自动探测 */
+  engine?: Engine | null;
   /** 结构性更新（先给出完整目录骨架，再逐步填充地图事件） */
   onUpdate?: (catalog: EventCatalog) => void;
   onProgress?: (progress: EventLoadProgress) => void;
   isCancelled?: () => boolean;
+}
+
+export interface EventCatalogResult {
+  catalog: EventCatalog;
+  /** 实际采用的引擎（来自配置或自动探测） */
+  engine: Engine;
+  /** 扫描工程内指令后发现的运行环境（配置存在时由调用方决定是否采用） */
+  runtime: Runtime;
 }
 
 const MAP_FILE = /^Map(\d+)\.lmu$/i;
@@ -47,13 +58,25 @@ function buildTranscoder(encodingModule: RpgrtEncoding, encoding: Encoding): Tra
   }
 }
 
-/** 引擎判定：2000 与 2003 的 chunk 结构不同，先按 2k 探测 */
+/**
+ * 引擎判定：配置里指定了引擎时以配置为准（解码失败再退回自动探测），
+ * 否则先按 2k 探测，2003 的库里 system.ldbId 会标记版本。
+ */
 function decodeDatabaseWithEngine(
   codec: RpgrtCodec,
   bytes: Uint8Array,
   transcoder: Transcoder | undefined,
-): { engine: '2k' | '2k3'; db: Database } {
-  let engine: '2k' | '2k3' = '2k';
+  preferred: Engine | null = null,
+): { engine: Engine; db: Database } {
+  if (preferred) {
+    try {
+      return { engine: preferred, db: codec.decodeDatabase(bytes, { engine: preferred, transcoder }) };
+    } catch {
+      // 配置的引擎无法解码时退回自动探测
+    }
+  }
+
+  let engine: Engine = '2k';
   let db: Database;
 
   try {
@@ -114,19 +137,20 @@ function toMapEvents(mapId: number, events: RpgEvent[]): EventObject[] {
  * 地图内的事件来自各 Map####.lmu（只保留事件与页数，不保留指令内容）。
  *
  * 先通过 onUpdate 给出不含地图事件的骨架，再逐张地图填充并回调进度。
+ * 同时返回实际采用的引擎，以及扫描全部指令后发现的运行环境。
  */
 export async function loadEventCatalog(
   root: FileSystemDirectoryHandle,
   encoding: Encoding,
   options: EventLoadOptions = {},
-): Promise<EventCatalog> {
+): Promise<EventCatalogResult> {
   const { codec, encoding: encodingModule } = await getRpgrt();
   const transcoder = buildTranscoder(encodingModule, encoding);
 
   const ldbBytes = await readBytes(root, 'RPG_RT.ldb');
   if (!ldbBytes) throw new Error('缺少 RPG_RT.ldb，无法读取事件');
 
-  const { engine, db } = decodeDatabaseWithEngine(codec, ldbBytes, transcoder);
+  const { engine, db } = decodeDatabaseWithEngine(codec, ldbBytes, transcoder, options.engine ?? null);
 
   // 地图列表与顺序：优先用地图树，缺失时按文件编号
   const mapInfoById = new Map<number, { name: string }>();
@@ -209,6 +233,17 @@ export async function loadEventCatalog(
   const total = mapFiles.length;
   let done = 0;
 
+  // 顺带收集出现过的指令码，用于推断第三方运行环境
+  const commandCodes = new Set<number>();
+  const collect = (commands: EventCommand[] | null | undefined) => {
+    for (const command of commands ?? []) commandCodes.add(command.code);
+  };
+
+  for (const event of db.commonevents ?? []) collect(event.eventCommands);
+  for (const troop of db.troops ?? []) {
+    for (const page of troop.pages ?? []) collect(page.eventCommands);
+  }
+
   for (const file of mapFiles) {
     if (options.isCancelled?.()) break;
 
@@ -218,6 +253,9 @@ export async function loadEventCatalog(
         const unit = codec.decodeMapUnit(bytes, { engine, transcoder });
         const target = mapById.get(file.id);
         if (target) target.events = toMapEvents(file.id, unit.events);
+        for (const event of unit.events ?? []) {
+          for (const page of event.pages ?? []) collect(page.eventCommands);
+        }
       } catch {
         // 单张地图解析失败不影响其余地图
       }
@@ -233,12 +271,12 @@ export async function loadEventCatalog(
   }
 
   options.onUpdate?.({ ...catalog, maps: [...catalog.maps] });
-  return catalog;
+  return { catalog, engine, runtime: detectRuntime(commandCodes) };
 }
 
 interface CachedDatabase {
   value: Database;
-  engine: '2k' | '2k3';
+  engine: Engine;
   modified: number;
 }
 
@@ -257,6 +295,19 @@ interface EventSession {
 }
 
 let session: EventSession | null = null;
+
+/**
+ * 配置中记录的引擎：读取事件页时优先按它解码，
+ * 与打开工程时的设置保持一致。
+ */
+let preferredEngine: Engine | null = null;
+
+export function setPreferredEngine(engine: Engine | null): void {
+  if (preferredEngine === engine) return;
+  preferredEngine = engine;
+  // 引擎变化会影响 LDB / LMU 的解码结果，缓存必须失效
+  session = null;
+}
 
 function getSession(root: FileSystemDirectoryHandle, encoding: Encoding): EventSession {
   if (!session || session.root !== root || session.encoding !== encoding) {
@@ -285,7 +336,7 @@ async function ensureDatabase(
   if (state.db && state.db.modified === file.lastModified) return state.db.value;
 
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const { engine, db } = decodeDatabaseWithEngine(codec, bytes, transcoder);
+  const { engine, db } = decodeDatabaseWithEngine(codec, bytes, transcoder, preferredEngine);
   state.db = { value: db, engine, modified: file.lastModified };
   return db;
 }
@@ -432,6 +483,38 @@ async function writeBytes(
   await writable.close();
   // 返回写入后的时间戳，供缓存判定
   return (await handle.getFile()).lastModified;
+}
+
+export interface CommandParametersUpdate {
+  /** 指令在事件页指令数组中的下标 */
+  index: number;
+  parameters: number[];
+}
+
+/**
+ * 写回单条指令的参数（如等待指令的模式与时长），返回修改后的整页指令数组。
+ */
+export async function saveCommandParameters(
+  root: FileSystemDirectoryHandle,
+  encoding: Encoding,
+  ref: EventPageRef,
+  update: CommandParametersUpdate,
+): Promise<EventCommand[]> {
+  const { codec, encoding: encodingModule } = await getRpgrt();
+  const state = getSession(root, encoding);
+  const transcoder = buildTranscoder(encodingModule, encoding);
+
+  if (!transcoder) throw new Error('当前编码不可用，无法写回；请检查工程编码设置');
+
+  const target = await resolveEventCommands(state, codec, transcoder, ref);
+  const { commands } = target;
+  const command = commands[update.index];
+  if (!command) throw new Error('指令位置无效，事件页内容可能已变化');
+
+  command.parameters = update.parameters;
+  await target.write();
+
+  return commands;
 }
 
 export interface TextBlockUpdate {
