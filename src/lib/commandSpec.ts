@@ -83,7 +83,7 @@ const time = { kind: 'time', label: '时长' } as const;
 const bool = { kind: 'bool' } as const;
 
 /** 单条参数的语义；`whenIndex`/`whenEquals` 表示仅在另一参数取特定值时才生效 */
-interface ParamSlot {
+export interface ParamSlot {
   position: number;
   name?: string;
   spec: ParamSpec;
@@ -164,6 +164,18 @@ const SPECS: ReadonlyMap<number, CommandSpec> = (() => {
 /** 指令文本是否有意义（用于决定是否按文本块渲染） */
 export function commandUsesText(code: number): boolean {
   return COMMAND_SCHEMA[code]?.usesText ?? false;
+}
+
+/** 指令的参数槽（供插入指令的表单使用）；未建模的指令返回空数组 */
+export function getCommandParams(code: number): ParamSlot[] {
+  return SPECS.get(code)?.params ?? [];
+}
+
+/** 指定引擎下该指令需要的最少参数个数；null 表示无法静态推导 */
+export function getCommandMinParams(code: number, engine: Engine): number | null {
+  const spec = SPECS.get(code);
+  if (!spec || !spec.minParams) return null;
+  return spec.minParams[engine];
 }
 
 export interface CommandEnvironment {

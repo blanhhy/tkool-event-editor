@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { buildCommandPages, splitCommandColumns } from '../lib/commandCatalog';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { buildCommandPages, splitCommandColumns, type CommandEntry } from '../lib/commandCatalog';
 import type { CommandEnvironment } from '../lib/commandSpec';
+import CommandParamsForm from './CommandParamsForm';
+
+/** 条目高度与间距，用于把面板撑到「堆满一列指令」的高度 */
+const ITEM_HEIGHT = 26;
+const ITEM_GAP = 3;
+/** 条目左右内边距 8×2 + 边框 1×2 + 少量余量 */
+const ITEM_CHROME = 32;
 
 interface Props {
   open: boolean;
@@ -12,28 +19,55 @@ interface Props {
 /**
  * 事件指令选择弹窗，顺序与 RPG Maker 2003 的「插入指令」面板一致。
  * 敌群事件页使用「战斗事件指令」面板；第三方指令集各自占新页。
- * 具体插入逻辑尚未接入。
+ * 固定两列、固定高度；条目宽度取所有页里最长的指令名。
+ * 选中指令后右侧显示参数表单；写回逻辑尚未接入。
  */
 export default function CommandPicker({ open, onClose, environment }: Props) {
   const [activePage, setActivePage] = useState(0);
+  const [selected, setSelected] = useState<CommandEntry | null>(null);
+  const [itemWidth, setItemWidth] = useState<number | null>(null);
+  const probeRef = useRef<HTMLDivElement>(null);
 
+  const engine = environment?.engine ?? '2k3';
   const pages = useMemo(
     () =>
       buildCommandPages({
-        engine: environment?.engine ?? '2k3',
+        engine,
         runtime: environment?.runtime ?? 'rpg_rt',
         scope: environment?.scope,
       }),
-    [environment?.engine, environment?.runtime, environment?.scope],
+    [engine, environment?.runtime, environment?.scope],
   );
 
   const page = pages[Math.min(activePage, pages.length - 1)];
-  const columns = page ? splitCommandColumns(page) : [];
+  const columns = page ? splitCommandColumns(page) : [[], []];
   const isBattle = environment?.scope === 'troop';
 
-  // 每次打开都回到第一页
+  /** 所有页的指令名：条目宽度按其中最长的一条来定 */
+  const allLabels = useMemo(() => {
+    const labels = new Set<string>();
+    for (const item of pages) {
+      for (const entry of item.entries) labels.add(entry.label);
+    }
+    return [...labels];
+  }, [pages]);
+
+  // 用一个隐藏的探针量出「所有页」里最长指令名的实际文本宽度（字体与条目一致）。
+  // 探针只在 open 时挂载，因此依赖里必须带上 open，否则首次打开时测不到，
+  // 条目会退回自然宽度，导致切换页时整个窗口跟着变宽变窄。
+  useLayoutEffect(() => {
+    if (!open) return;
+    const probe = probeRef.current;
+    if (!probe) return;
+    setItemWidth(Math.ceil(probe.getBoundingClientRect().width) + ITEM_CHROME);
+  }, [open, allLabels]);
+
+  // 每次打开都回到第一页，并清掉上一次选中的指令
   useEffect(() => {
-    if (open) setActivePage(0);
+    if (open) {
+      setActivePage(0);
+      setSelected(null);
+    }
   }, [open]);
 
   useEffect(() => {
@@ -46,6 +80,10 @@ export default function CommandPicker({ open, onClose, environment }: Props) {
   }, [open, onClose]);
 
   if (!open || !page) return null;
+
+  // 面板高度按「一列堆满 maxRows 条」计算，内容多少都不影响
+  const rows = Math.max(1, page.maxRows);
+  const gridHeight = rows * ITEM_HEIGHT + (rows - 1) * ITEM_GAP;
 
   return (
     <div
@@ -91,23 +129,50 @@ export default function CommandPicker({ open, onClose, environment }: Props) {
           </div>
         )}
 
-        <div className="commandPickerBody">
-          <div className="commandPickerGrid">
-            {columns.map((column, index) => (
-              <div key={index} className="commandPickerColumn">
-                {column.map((entry) => (
-                  <button
-                    key={entry.code}
-                    type="button"
-                    className="commandPickerItem"
-                    title={entry.label}
-                  >
-                    {entry.label}
-                  </button>
-                ))}
-              </div>
-            ))}
+        <div className="commandPickerBody" style={{ height: gridHeight }}>
+          <div className="commandPickerList">
+            <div className="commandPickerGrid">
+              {columns.map((column, index) => (
+                <div key={index} className="commandPickerColumn">
+                  {column.map((entry) => (
+                    <button
+                      key={entry.code}
+                      type="button"
+                      className="commandPickerItem"
+                      style={itemWidth ? { width: itemWidth } : undefined}
+                      data-selected={selected?.code === entry.code ? 'true' : undefined}
+                      title={entry.label}
+                      onClick={() => setSelected(entry)}
+                    >
+                      {entry.label}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
+
+          <div className="commandParamsPane">
+            {selected ? (
+              <CommandParamsForm
+                key={`${selected.code}-${engine}`}
+                code={selected.code}
+                label={selected.label}
+                engine={engine}
+                onCancel={onClose}
+                onConfirm={() => onClose()}
+              />
+            ) : (
+              <div className="commandParamsPlaceholder">选择一个指令以配置参数</div>
+            )}
+          </div>
+        </div>
+
+        {/* 隐藏的测量节点：宽度等于最长指令名 */}
+        <div className="commandPickerMeasure" aria-hidden="true" ref={probeRef}>
+          {allLabels.map((label) => (
+            <div key={label}>{label}</div>
+          ))}
         </div>
       </div>
     </div>

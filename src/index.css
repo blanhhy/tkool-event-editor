@@ -1449,9 +1449,9 @@ button {
 }
 
 .commandPicker {
-  width: 640px;
-  max-width: 92vw;
-  max-height: 84vh;
+  width: max-content;
+  max-width: 94vw;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border-strong);
@@ -1490,9 +1490,19 @@ button {
 }
 
 .commandPickerBody {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  box-sizing: content-box;
+  padding: 8px 10px 10px;
+  overflow: hidden;
+}
+
+.commandPickerList {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* 页签：官方指令是序号，扩展指令集用指令集名 */
@@ -1530,18 +1540,18 @@ button {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 10px 10px;
 }
 
 .commandPickerColumn {
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
 .commandPickerItem {
+  flex: 0 0 auto;
+  box-sizing: border-box;
   height: 26px;
   padding: 0 8px;
   border: 1px solid var(--color-border-dim);
@@ -1560,6 +1570,286 @@ button {
 .commandPickerItem:hover {
   border-color: var(--color-border-strong);
   background: var(--color-bg-hover);
+}
+
+.commandPickerItem[data-selected='true'] {
+  border-color: var(--syntax-function);
+  background: rgba(97, 175, 239, 0.12);
+  color: var(--syntax-function);
+}
+
+/* 隐藏的测量节点：只用来量最长指令名的文本宽度 */
+.commandPickerMeasure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+/* ── 参数表单 ───────────────────────────────────────── */
+
+.commandParamsPane {
+  flex: 0 0 390px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--color-border-dim);
+  background: var(--color-editor-bg);
+}
+
+.commandParamsPlaceholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: var(--color-text-dim);
+  font-size: 12px;
+}
+
+.commandDialog {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.commandDialogTitle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--color-border-dim);
+}
+
+.commandDialogName {
+  font-size: 12.5px;
+  color: var(--syntax-function);
+}
+
+.commandDialogCode {
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
+.commandDialogBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px;
+}
+
+/* RM 风格的一行：左侧标签，右侧控件 */
+.dialogRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+}
+
+.dialogRowLabel {
+  flex: 0 0 74px;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.dialogRowFields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dialogInlineLabel {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+}
+
+.dialogCheck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.dialogCheck input {
+  margin: 0;
+}
+
+.commandFieldInput,
+.commandTextField {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 3px;
+  background: var(--color-bg-subtle);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.commandFieldInput:focus,
+.commandTextField:focus {
+  outline: none;
+  border-color: var(--syntax-function);
+}
+
+.commandTextField {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.dialogNumber {
+  width: 84px;
+  flex: 0 0 auto;
+}
+
+.dialogSelect {
+  width: auto;
+  min-width: 108px;
+  max-width: 190px;
+  flex: 0 1 auto;
+}
+
+.dialogSuffix {
+  font-size: 10.5px;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+}
+
+.dialogTextBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dialogTextBlock .dialogRowLabel {
+  flex: none;
+  text-align: left;
+}
+
+.dialogNote {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--color-border-dim);
+  font-size: 10.5px;
+  color: var(--color-text-dim);
+  line-height: 1.5;
+}
+
+/* 分组框：对应官方对话框的 Switch / Operation / Operand 等 */
+.dialogSection {
+  margin: 0;
+  padding: 4px 8px 7px;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 3px;
+  min-width: 0;
+}
+
+.dialogSection legend {
+  padding: 0 4px;
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+}
+
+.dialogOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dialogOption {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.dialogRadio {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--color-text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dialogRadio input {
+  margin: 0;
+}
+
+.dialogLiteral {
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
+.dialogChoiceLines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dialogChoiceLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialogChoiceLabel {
+  flex: 0 0 46px;
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
+.commandDialogFooter {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-border-dim);
+}
+
+.commandParamsButton {
+  height: 26px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.commandParamsButton:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.commandParamsConfirm {
+  border-color: var(--syntax-function);
+  color: var(--syntax-function);
 }
 
 .cmHost {

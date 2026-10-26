@@ -255,17 +255,13 @@ function extensionPages(label: string, codes: Iterable<number>): CommandPage[] {
 }
 
 /**
- * 把一页的条目按「先填满左列，再填右列」的方式切成列。
- * 条目不超过 maxRows 时只用一列（对应图 4 的单列布局）。
+ * 把一页的条目切成固定的两列，先填满左列再填右列。
+ * 即使条目不足以填满两列也不合并成一列，保持面板宽度稳定。
  */
 export function splitCommandColumns(page: CommandPage): CommandEntry[][] {
-  const { entries, maxRows } = page;
-  if (entries.length === 0) return [];
+  const { entries } = page;
+  if (entries.length === 0) return [[], []];
 
-  const columnCount = Math.max(1, Math.ceil(entries.length / maxRows));
-  const rows = Math.ceil(entries.length / columnCount);
-
-  return Array.from({ length: columnCount }, (_, index) =>
-    entries.slice(index * rows, (index + 1) * rows),
-  );
+  const rows = Math.ceil(entries.length / 2);
+  return [entries.slice(0, rows), entries.slice(rows)];
 }
