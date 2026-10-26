@@ -36,6 +36,14 @@ export const SYNTAX_COLORS = {
   number: PALETTE.chalky,
   /** 布尔字面量 */
   boolean: PALETTE.whiskey,
+  /** 模板字符串：Lezer 把 TemplateString 标成 special(string)，One Dark 用 cyan */
+  templateString: PALETTE.cyan,
+  /** 关键字（如 return） */
+  keyword: PALETTE.violet,
+  /** 操作符（如 ~） */
+  operator: PALETTE.cyan,
+  /** this / self */
+  self: PALETTE.chalky,
 } as const;
 
 /** 缩进参考线：按嵌套层级循环取色，与语法着色同源 */

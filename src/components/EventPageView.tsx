@@ -17,6 +17,7 @@ import CommentBlock from './CommentBlock';
 import DiagnosticMark from './DiagnosticMark';
 import IndentGuides from './IndentGuides';
 import InsertButton from './InsertButton';
+import LabelCommand from './LabelCommand';
 import MessageBlock from './MessageBlock';
 import WaitCommand from './WaitCommand';
 
@@ -171,6 +172,15 @@ export default function EventPageView({
                 onSave={(parameters) => onSaveParameters?.(row.line, parameters)}
                 {...rowProps}
               />
+            ) : row.line.code === Cmd.Label || row.line.code === Cmd.JumpToLabel ? (
+              <LabelCommand
+                key={row.line.index}
+                line={row.line}
+                kind={row.line.code === Cmd.Label ? 'label' : 'goto'}
+                diagnostics={diagnosticsByIndex.get(row.line.index)}
+                onSave={(parameters) => onSaveParameters?.(row.line, parameters)}
+                {...rowProps}
+              />
             ) : (
               <CommandRow
                 key={row.line.index}
@@ -230,6 +240,12 @@ function CommandRow({
 }) {
   // 指令 10 是可插入新代码的空行，标成 @> 提示插入点；> 用标点配色
   const isEmptySlot = line.code === Cmd.End;
+  // 少数指令有专属的代码化写法
+  const isEraseEvent = line.code === Cmd.EraseEvent;
+  const isEndProcessing = line.code === Cmd.EndEventProcessing;
+  const isLoop = line.code === Cmd.Loop;
+  const isEndLoop = line.code === Cmd.EndLoop;
+  const isBreakLoop = line.code === Cmd.BreakLoop;
   // 默认样式里的名字不带空格
   const displayName = line.name.replace(/\s+/g, '');
 
@@ -254,6 +270,27 @@ function CommandRow({
             <span className="commandName">@</span>
             <span className="commandPunct">&gt;</span>
           </>
+        ) : isEraseEvent ? (
+          <>
+            {/* 暂时消除事件 → ~this()：~ 操作符色，this 用 self 色 */}
+            <span className="commandOperator">~</span>
+            <span className="commandSelf">this</span>
+            <span className="commandPunct">()</span>
+          </>
+        ) : isLoop ? (
+          <>
+            {/* 循环 → while true do：关键字 + 布尔字面量 */}
+            <span className="commandKeyword">{'while '}</span>
+            <span className="commandBoolean">true</span>
+            <span className="commandKeyword">{' do'}</span>
+          </>
+        ) : isEndLoop ? (
+          <span className="commandKeyword">done</span>
+        ) : isBreakLoop ? (
+          <span className="commandKeyword">break</span>
+        ) : isEndProcessing ? (
+          /* 中断事件处理 → return，关键字色 */
+          <span className="commandKeyword">return</span>
         ) : (
           <>
             {/* 没有专属编辑/渲染规则的指令统一显示成：@名字(裸参数, text="文本") */}

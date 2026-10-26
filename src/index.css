@@ -1206,6 +1206,30 @@ button {
   color: var(--syntax-function);
 }
 
+/* 代码化指令的特殊片段：操作符 / this / 关键字 / 布尔字面量 */
+.commandOperator,
+.commandSelf,
+.commandKeyword,
+.commandBoolean {
+  flex: 0 0 auto;
+}
+
+.commandOperator {
+  color: var(--syntax-operator);
+}
+
+.commandSelf {
+  color: var(--syntax-self);
+}
+
+.commandKeyword {
+  color: var(--syntax-keyword);
+}
+
+.commandBoolean {
+  color: var(--syntax-boolean);
+}
+
 /* 插入点提示符：@ 之后的 > 用标点配色（与编辑器正文同色） */
 .commandPunct {
   color: var(--syntax-punctuation);
@@ -1317,6 +1341,12 @@ button {
   caret-color: #7fb0ff;
 }
 
+/* 文本选择高亮与 CodeMirror 编辑器保持一致（同一套选区颜色） */
+.commentInput::selection,
+.messageInput::selection {
+  background: rgba(95, 145, 220, 0.28);
+}
+
 /* ── 消息块（10110 + 20110 续行） ─────────────────────── */
 
 .messageBlock {
@@ -1351,20 +1381,19 @@ button {
 .messagePunct {
   flex: 0 0 auto;
   color: var(--syntax-punctuation);
-  opacity: 0.6;
   user-select: none;
 }
 
-/* 字符串引号与字符串同色 */
+/* 反引号字符串与编辑器里的模板字符串同色（One Dark 的 special(string) → cyan） */
 .messageQuote {
   flex: 0 0 auto;
-  color: var(--syntax-string);
+  color: var(--syntax-template);
   user-select: none;
 }
 
 .messageString {
   flex: 0 0 auto;
-  color: var(--syntax-string);
+  color: var(--syntax-template);
   /* 文本块同样不按宽度折行 */
   white-space: pre;
 }
@@ -1381,7 +1410,7 @@ button {
   resize: none;
   overflow: hidden;
   background: transparent;
-  color: var(--syntax-string);
+  color: var(--syntax-template);
   font: inherit;
   line-height: inherit;
   white-space: pre-wrap;
@@ -1435,6 +1464,20 @@ button {
   outline: none;
   background: transparent;
   color: var(--syntax-number);
+  font: inherit;
+  line-height: inherit;
+  caret-color: #7fb0ff;
+}
+
+/* 标签号输入框：只改数字，颜色与标签名一致 */
+.labelInput {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--syntax-function);
   font: inherit;
   line-height: inherit;
   caret-color: #7fb0ff;

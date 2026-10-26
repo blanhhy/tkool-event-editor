@@ -87,6 +87,10 @@ const SYNTAX_STYLE = {
   '--syntax-punctuation': SYNTAX_COLORS.punctuation,
   '--syntax-number': SYNTAX_COLORS.number,
   '--syntax-boolean': SYNTAX_COLORS.boolean,
+  '--syntax-template': SYNTAX_COLORS.templateString,
+  '--syntax-keyword': SYNTAX_COLORS.keyword,
+  '--syntax-operator': SYNTAX_COLORS.operator,
+  '--syntax-self': SYNTAX_COLORS.self,
   /* 缩进参考线按层级循环取色 */
   '--indent-0': INDENT_COLORS[0],
   '--indent-1': INDENT_COLORS[1],
