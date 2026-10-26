@@ -1077,6 +1077,7 @@ button {
 .commandList {
   flex: 1;
   min-height: 0;
+  /* 行不折行，超宽内容由容器横向滚动 */
   overflow: auto;
   padding: 6px 0 48px;
   font-family: var(--font-mono);
@@ -1087,7 +1088,7 @@ button {
 .commandRow {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 0;
   padding-right: 14px;
 }
 
@@ -1098,6 +1099,7 @@ button {
 .commandIndex {
   flex: 0 0 auto;
   width: 46px;
+  margin-right: 10px;
   padding-right: 8px;
   text-align: right;
   color: var(--color-text-dim);
@@ -1111,12 +1113,59 @@ button {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  white-space: pre-wrap;
+  /* 一条指令固定一行：不按宽度折行，超宽时整行横向滚动 */
+  white-space: pre;
+}
+
+/* 彩虹缩进参考线：每层一个 18px 的格子，格左边缘画一条竖线 */
+.indentGuides {
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: flex;
+  pointer-events: none;
+  user-select: none;
+}
+
+.indentGuide {
+  flex: 0 0 18px;
+  border-left: 1px solid currentColor;
+  opacity: 0.45;
+}
+
+.indentGuide[data-level='0'] {
+  color: var(--indent-0);
+}
+
+.indentGuide[data-level='1'] {
+  color: var(--indent-1);
+}
+
+.indentGuide[data-level='2'] {
+  color: var(--indent-2);
+}
+
+.indentGuide[data-level='3'] {
+  color: var(--indent-3);
+}
+
+.indentGuide[data-level='4'] {
+  color: var(--indent-4);
+}
+
+.indentGuide[data-level='5'] {
+  color: var(--indent-5);
 }
 
 .commandName {
   flex: 0 0 auto;
   color: var(--syntax-function);
+}
+
+/* 插入点提示符：@ 之后的 > 用标点配色 */
+.commandPunct {
+  color: var(--syntax-punctuation);
+  opacity: 0.6;
+  user-select: none;
 }
 
 .commandContent[data-role='branch'] .commandName {
@@ -1137,8 +1186,7 @@ button {
 }
 
 .commandText {
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 auto;
   color: var(--color-text);
 }
 
@@ -1263,11 +1311,18 @@ button {
   user-select: none;
 }
 
-.messageString {
-  flex: 0 1 auto;
-  min-width: 0;
+/* 字符串引号与字符串同色 */
+.messageQuote {
+  flex: 0 0 auto;
   color: var(--syntax-string);
-  white-space: pre-wrap;
+  user-select: none;
+}
+
+.messageString {
+  flex: 0 0 auto;
+  color: var(--syntax-string);
+  /* 文本块同样不按宽度折行 */
+  white-space: pre;
 }
 
 /* 编辑态：输入框紧跟前缀，内部各行自然从同一列开始 */

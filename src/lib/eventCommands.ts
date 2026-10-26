@@ -150,7 +150,7 @@ export const EVENT_COMMANDS: Record<CmdCode, CommandMeta> = {
   [Cmd.Comment2]: { name: '注释续行' },
   [Cmd.ElseBranchB]: { name: '否则（战斗）', role: 'branch' },
   [Cmd.EndBranchB]: { name: '结束分支（战斗）', role: 'end' },
-  [Cmd.End]: { name: '空行' },
+  [Cmd.End]: { name: '@' },
   // ── 内部标记（作用未明） ──────────────────────────────
   [Cmd.VictoryHandler]: { name: '[内部] 胜利处理' },
   [Cmd.EscapeHandler]: { name: '[内部] 逃跑处理' },

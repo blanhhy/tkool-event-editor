@@ -71,7 +71,7 @@ import {
   type EventLoadProgress,
 } from './lib/lcfEvents';
 import { saveRecentProject, type RecentProject } from './lib/recent';
-import { SYNTAX_COLORS } from './lib/codeTheme';
+import { INDENT_COLORS, SYNTAX_COLORS } from './lib/codeTheme';
 import { type CommandEnvironment } from './lib/commandSpec';
 import type { Engine, Runtime } from './lib/environment';
 
@@ -87,6 +87,13 @@ const SYNTAX_STYLE = {
   '--syntax-punctuation': SYNTAX_COLORS.punctuation,
   '--syntax-number': SYNTAX_COLORS.number,
   '--syntax-boolean': SYNTAX_COLORS.boolean,
+  /* 缩进参考线按层级循环取色 */
+  '--indent-0': INDENT_COLORS[0],
+  '--indent-1': INDENT_COLORS[1],
+  '--indent-2': INDENT_COLORS[2],
+  '--indent-3': INDENT_COLORS[3],
+  '--indent-4': INDENT_COLORS[4],
+  '--indent-5': INDENT_COLORS[5],
 } as CSSProperties;
 
 function isUserCancellation(err: unknown): boolean {

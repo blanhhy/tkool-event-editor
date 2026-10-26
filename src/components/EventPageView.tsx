@@ -8,6 +8,7 @@ import {
 } from '../lib/commandSpec';
 import CommentBlock from './CommentBlock';
 import DiagnosticMark from './DiagnosticMark';
+import IndentGuides from './IndentGuides';
 import MessageBlock from './MessageBlock';
 import WaitCommand from './WaitCommand';
 
@@ -110,13 +111,17 @@ function CommandRow({ line, diagnostics }: { line: CommandLine; diagnostics?: Di
   return (
     <div className="commandRow" role="listitem">
       <span className="commandIndex">{line.index + 1}</span>
+      <IndentGuides depth={line.indent} />
       <div
         className="commandContent"
         data-role={line.role}
         data-unknown={line.unknown ? 'true' : undefined}
-        style={{ paddingLeft: line.indent * 18 }}
       >
-        <span className="commandName">{line.name}</span>
+        <span className="commandName">
+          {line.name}
+          {/* 指令 10 是可插入新代码的空行，标成 @> 提示插入点；> 用标点配色 */}
+          {line.code === Cmd.End && <span className="commandPunct">&gt;</span>}
+        </span>
         {line.params.length > 0 && (
           <span className="commandParams">{line.params.join(', ')}</span>
         )}

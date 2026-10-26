@@ -5,6 +5,7 @@ import {
   stripNewlines,
   type CommandLine,
 } from '../lib/eventCommands';
+import IndentGuides from './IndentGuides';
 
 interface Props {
   /** 消息块：首行 ShowMessage + 若干 ShowMessage2 续行 */
@@ -69,6 +70,8 @@ export default function MessageBlock({ lines, onSave }: Props) {
           ))}
         </div>
 
+        <IndentGuides depth={lines[0].indent} />
+
         <div className="commandContent messageContent">
           {editing ? (
             <div
@@ -76,7 +79,8 @@ export default function MessageBlock({ lines, onSave }: Props) {
               onClick={() => inputRef.current?.focus()}
             >
               <span className="messageDirective">@message</span>
-              <span className="messagePunct">(`</span>
+              <span className="messagePunct">(</span>
+              <span className="messageQuote">`</span>
               <textarea
                 ref={inputRef}
                 className="messageInput"
@@ -108,16 +112,27 @@ export default function MessageBlock({ lines, onSave }: Props) {
             <div className="messageCode" onClick={startEditing}>
               <div className="messageLine">
                 <span className="messageDirective">@message</span>
-                <span className="messagePunct">(`</span>
+                <span className="messagePunct">(</span>
+                <span className="messageQuote">`</span>
                 <span className="messageString">{displayLines[0] || '\u00A0'}</span>
-                {displayLines.length === 1 && <span className="messagePunct">`)</span>}
+                {displayLines.length === 1 && (
+                  <>
+                    <span className="messageQuote">`</span>
+                    <span className="messagePunct">)</span>
+                  </>
+                )}
               </div>
               {displayLines.slice(1).map((text, index) => {
                 const isLast = index === displayLines.length - 2;
                 return (
                   <div key={index} className="messageLine messageContinuation">
                     <span className="messageString">{text || '\u00A0'}</span>
-                    {isLast && <span className="messagePunct">`)</span>}
+                    {isLast && (
+                      <>
+                        <span className="messageQuote">`</span>
+                        <span className="messagePunct">)</span>
+                      </>
+                    )}
                   </div>
                 );
               })}

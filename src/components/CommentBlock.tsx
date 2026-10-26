@@ -5,6 +5,7 @@ import {
   stripNewlines,
   type CommandLine,
 } from '../lib/eventCommands';
+import IndentGuides from './IndentGuides';
 
 interface Props {
   /** 注释块：首行 Comment + 若干 Comment2 续行 */
@@ -71,7 +72,10 @@ export default function CommentBlock({ lines, onSave }: Props) {
       {isMultiLine && (
         <div key="fence-top" className="commandRow commentFenceRow" onClick={startEditing}>
           <span className="commandIndex" />
-          <div className="commandContent commentFence">"""</div>
+          <IndentGuides depth={lines[0].indent} />
+          <div className="commandContent commentFence">
+            """
+          </div>
         </div>
       )}
 
@@ -81,6 +85,8 @@ export default function CommentBlock({ lines, onSave }: Props) {
             <div key={index}>{number ?? '\u00A0'}</div>
           ))}
         </div>
+
+        <IndentGuides depth={lines[0].indent} />
 
         <div className="commandContent commentContent">
           <div className={isMultiLine ? 'commentMultiBody' : 'commentSingle'}>
@@ -117,7 +123,10 @@ export default function CommentBlock({ lines, onSave }: Props) {
       {isMultiLine && (
         <div key="fence-bottom" className="commandRow commentFenceRow" onClick={startEditing}>
           <span className="commandIndex" />
-          <div className="commandContent commentFence">"""</div>
+          <IndentGuides depth={lines[0].indent} />
+          <div className="commandContent commentFence">
+            """
+          </div>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Diagnostic } from '../lib/commandSpec';
 import type { CommandLine } from '../lib/eventCommands';
 import DiagnosticMark from './DiagnosticMark';
+import IndentGuides from './IndentGuides';
 
 interface Props {
   line: CommandLine;
@@ -77,9 +78,9 @@ export default function WaitCommand({ line, diagnostics, onSave }: Props) {
   return (
     <div className="commandRow" role="listitem">
       <span className="commandIndex">{line.index + 1}</span>
+      <IndentGuides depth={line.indent} />
       <div
         className="commandContent waitContent"
-        style={{ paddingLeft: line.indent * 18 }}
         onClick={editing ? undefined : startEditing}
       >
         <span className="commandName">@sleep</span>
