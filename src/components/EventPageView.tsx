@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Cmd } from '../lib/commandCodes';
 import { groupCommandLines, type CommandLine, type TextBlockKind } from '../lib/eventCommands';
 import {
   validateEventPage,
@@ -84,7 +85,7 @@ export default function EventPageView({
                 lines={row.lines}
                 onSave={(text) => onSaveBlock?.('message', row.lines, text)}
               />
-            ) : row.line.code === 11410 ? (
+            ) : row.line.code === Cmd.Wait ? (
               <WaitCommand
                 key={row.line.index}
                 line={row.line}

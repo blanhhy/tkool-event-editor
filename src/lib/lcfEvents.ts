@@ -1,4 +1,5 @@
 import type { Database, Event as RpgEvent, EventCommand, MapUnit } from 'rpgrt';
+import { Cmd, type CmdCode } from './commandCodes';
 import { detectRuntime, type Engine, type Runtime } from './environment';
 import type { EventCatalog, EventObject, EventPageRef } from './events';
 import { iteratorOf } from './fs';
@@ -518,7 +519,7 @@ export async function saveCommandParameters(
 }
 
 export interface TextBlockUpdate {
-  /** 文本块首条指令（12410 / 10110）在事件页指令数组中的下标 */
+  /** 文本块首条指令（Comment / ShowMessage）在事件页指令数组中的下标 */
   startIndex: number;
   /** 文本块末条指令（最后一条续行）的下标 */
   endIndex: number;
@@ -528,15 +529,15 @@ export interface TextBlockUpdate {
 
 /** 文本块的存储形态：首行指令码 + 续行指令码 */
 interface TextBlockCodes {
-  first: number;
-  continuation: number;
+  first: CmdCode;
+  continuation: CmdCode;
 }
 
-const COMMENT_CODES: TextBlockCodes = { first: 12410, continuation: 22410 };
-const MESSAGE_CODES: TextBlockCodes = { first: 10110, continuation: 20110 };
+const COMMENT_CODES: TextBlockCodes = { first: Cmd.Comment, continuation: Cmd.Comment2 };
+const MESSAGE_CODES: TextBlockCodes = { first: Cmd.ShowMessage, continuation: Cmd.ShowMessage2 };
 
 /**
- * 写回注释块：把 [startIndex, endIndex] 替换为新的 12410 + 22410 指令序列。
+ * 写回注释块：把 [startIndex, endIndex] 替换为新的 Comment + Comment2 指令序列。
  * 行数可以增加或减少，返回值是修改后的整页指令数组。
  */
 export async function saveCommentBlock(
@@ -549,7 +550,7 @@ export async function saveCommentBlock(
 }
 
 /**
- * 写回消息块：把 [startIndex, endIndex] 替换为新的 10110 + 20110 指令序列。
+ * 写回消息块：把 [startIndex, endIndex] 替换为新的 ShowMessage + ShowMessage2 指令序列。
  */
 export async function saveMessageBlock(
   root: FileSystemDirectoryHandle,

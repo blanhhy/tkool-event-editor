@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { splitCommandText, textFitsCommandLimits, type CommandLine } from '../lib/eventCommands';
 
 interface Props {
-  /** 注释块：首行 12410 + 若干 22410 续行 */
+  /** 注释块：首行 Comment + 若干 Comment2 续行 */
   lines: CommandLine[];
   /** 编辑完成：text 为整段文本（换行会拆成多条续行指令） */
   onSave?: (text: string) => void;
@@ -10,8 +10,8 @@ interface Props {
 
 /**
  * 注释块渲染：
- *   单行（只有 12410）        →  # 内容
- *   多行（12410 + 22410…）    →  Python 风格三引号块
+ *   单行（只有 Comment）        →  # 内容
+ *   多行（Comment + Comment2…） →  Python 风格三引号块
  *
  * 编辑时也按当前文本的行数即时切换形态（乐观渲染）：
  * 在单行注释里敲回车，立刻变成三引号块。

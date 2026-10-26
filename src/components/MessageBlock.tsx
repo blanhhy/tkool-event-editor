@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { splitCommandText, textFitsCommandLimits, type CommandLine } from '../lib/eventCommands';
 
 interface Props {
-  /** 消息块：首行 10110 + 若干 20110 续行 */
+  /** 消息块：首行 ShowMessage + 若干 ShowMessage2 续行 */
   lines: CommandLine[];
   /** 编辑完成：text 为整段文本（换行会拆成多条续行指令） */
   onSave?: (text: string) => void;

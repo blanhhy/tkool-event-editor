@@ -1,4 +1,5 @@
 import type { EventCommand } from 'rpgrt';
+import { Cmd, type CmdCode } from './commandCodes';
 
 /**
  * 事件指令码表（RPG Maker 2000/2003 + EasyRPG / Maniac Patch 扩展）。
@@ -14,193 +15,198 @@ interface CommandMeta {
   role?: CommandRole;
 }
 
-export const EVENT_COMMANDS: Record<number, CommandMeta> = {
+export const EVENT_COMMANDS: Record<CmdCode, CommandMeta> = {
   // ── 消息 ──────────────────────────────────────────────
-  10110: { name: '显示消息' },
-  10120: { name: '更改对话框' },
-  10130: { name: '更改脸图' },
-  10140: { name: '显示选项', role: 'branch' },
-  10150: { name: '输入数字' },
+  [Cmd.ShowMessage]: { name: '显示消息' },
+  [Cmd.MessageOptions]: { name: '更改对话框' },
+  [Cmd.ChangeFaceGraphic]: { name: '更改脸图' },
+  [Cmd.ShowChoice]: { name: '显示选项', role: 'branch' },
+  [Cmd.InputNumber]: { name: '输入数字' },
   // ── 开关 / 变量 / 计时器 ──────────────────────────────
-  10210: { name: '控制开关' },
-  10220: { name: '控制变量' },
-  10230: { name: '定时器操作' },
+  [Cmd.ControlSwitches]: { name: '控制开关' },
+  [Cmd.ControlVars]: { name: '控制变量' },
+  [Cmd.TimerOperation]: { name: '定时器操作' },
   // ── 队伍 / 物品 / 金钱 ────────────────────────────────
-  10310: { name: '更改金钱' },
-  10320: { name: '更改道具' },
-  10330: { name: '更改队伍成员' },
+  [Cmd.ChangeGold]: { name: '更改金钱' },
+  [Cmd.ChangeItems]: { name: '更改道具' },
+  [Cmd.ChangePartyMembers]: { name: '更改队伍成员' },
   // ── 角色 ──────────────────────────────────────────────
-  10410: { name: '更改经验' },
-  10420: { name: '更改等级' },
-  10430: { name: '更改能力值' },
-  10440: { name: '更改技能' },
-  10450: { name: '更改装备' },
-  10460: { name: '更改生命值' },
-  10470: { name: '更改魔法值' },
-  10480: { name: '更改状态' },
-  10490: { name: '完全治疗' },
-  10500: { name: '施加伤害' },
+  [Cmd.ChangeExp]: { name: '更改经验' },
+  [Cmd.ChangeLevel]: { name: '更改等级' },
+  [Cmd.ChangeParameters]: { name: '更改能力值' },
+  [Cmd.ChangeSkills]: { name: '更改技能' },
+  [Cmd.ChangeEquipment]: { name: '更改装备' },
+  [Cmd.ChangeHP]: { name: '更改生命值' },
+  [Cmd.ChangeSP]: { name: '更改魔法值' },
+  [Cmd.ChangeCondition]: { name: '更改状态' },
+  [Cmd.FullHeal]: { name: '完全治疗' },
+  [Cmd.SimulatedAttack]: { name: '施加伤害' },
   // ── 角色外观 / 系统资源 ───────────────────────────────
-  10610: { name: '更改角色名字' },
-  10620: { name: '更改角色头衔' },
-  10630: { name: '更改角色图像' },
-  10640: { name: '更改角色脸图' },
-  10650: { name: '更改载具图像' },
-  10660: { name: '更改系统 BGM' },
-  10670: { name: '更改系统音效' },
-  10680: { name: '更改系统图像' },
-  10690: { name: '更改转场特效' },
+  [Cmd.ChangeHeroName]: { name: '更改角色名字' },
+  [Cmd.ChangeHeroTitle]: { name: '更改角色头衔' },
+  [Cmd.ChangeSpriteAssociation]: { name: '更改角色图像' },
+  [Cmd.ChangeActorFace]: { name: '更改角色脸图' },
+  [Cmd.ChangeVehicleGraphic]: { name: '更改载具图像' },
+  [Cmd.ChangeSystemBGM]: { name: '更改系统 BGM' },
+  [Cmd.ChangeSystemSFX]: { name: '更改系统音效' },
+  [Cmd.ChangeSystemGraphics]: { name: '更改系统图像' },
+  [Cmd.ChangeScreenTransitions]: { name: '更改转场特效' },
   // ── 场景 ──────────────────────────────────────────────
-  10710: { name: '进入战斗' },
-  10720: { name: '进入商店' },
-  10730: { name: '进入旅馆' },
-  10740: { name: '输入角色名字' },
+  [Cmd.EnemyEncounter]: { name: '进入战斗' },
+  [Cmd.OpenShop]: { name: '进入商店' },
+  [Cmd.ShowInn]: { name: '进入旅馆' },
+  [Cmd.EnterHeroName]: { name: '输入角色名字' },
   // ── 位置 / 载具 ───────────────────────────────────────
-  10810: { name: '转移玩家' },
-  10820: { name: '获取玩家位置' },
-  10830: { name: '移动到保存位置' },
-  10840: { name: '乘降交通工具' },
-  10850: { name: '设置载具位置' },
-  10860: { name: '更改事件位置' },
-  10870: { name: '交换事件位置' },
-  10910: { name: '获取地形 ID' },
-  10920: { name: '获取事件 ID' },
+  [Cmd.Teleport]: { name: '转移玩家' },
+  [Cmd.MemorizeLocation]: { name: '获取玩家位置' },
+  [Cmd.RecallToLocation]: { name: '移动到保存位置' },
+  [Cmd.EnterExitVehicle]: { name: '乘降交通工具' },
+  [Cmd.SetVehicleLocation]: { name: '设置载具位置' },
+  [Cmd.ChangeEventLocation]: { name: '更改事件位置' },
+  [Cmd.TradeEventLocations]: { name: '交换事件位置' },
+  [Cmd.StoreTerrainID]: { name: '获取地形 ID' },
+  [Cmd.StoreEventID]: { name: '获取事件 ID' },
   // ── 画面 ──────────────────────────────────────────────
-  11010: { name: '淡出画面' },
-  11020: { name: '显示画面' },
-  11030: { name: '着色画面' },
-  11040: { name: '画面闪烁' },
-  11050: { name: '画面震动' },
-  11060: { name: '移动镜头' },
-  11070: { name: '天气效果' },
+  [Cmd.EraseScreen]: { name: '淡出画面' },
+  [Cmd.ShowScreen]: { name: '显示画面' },
+  [Cmd.TintScreen]: { name: '着色画面' },
+  [Cmd.FlashScreen]: { name: '画面闪烁' },
+  [Cmd.ShakeScreen]: { name: '画面震动' },
+  [Cmd.PanScreen]: { name: '移动镜头' },
+  [Cmd.WeatherEffects]: { name: '天气效果' },
   // ── 图片 / 动画 ───────────────────────────────────────
-  11110: { name: '显示图片' },
-  11120: { name: '移动图片' },
-  11130: { name: '消除图片' },
-  11210: { name: '显示动画' },
+  [Cmd.ShowPicture]: { name: '显示图片' },
+  [Cmd.MovePicture]: { name: '移动图片' },
+  [Cmd.ErasePicture]: { name: '消除图片' },
+  [Cmd.ShowBattleAnimation]: { name: '显示动画' },
   // ── 角色 / 事件移动 ───────────────────────────────────
-  11310: { name: '隐藏玩家' },
-  11320: { name: '事件闪烁' },
-  11330: { name: '设置移动路线' },
-  11340: { name: '等待移动完成' },
-  11350: { name: '停止所有移动' },
-  11410: { name: '等待' },
+  [Cmd.PlayerVisibility]: { name: '隐藏玩家' },
+  [Cmd.FlashSprite]: { name: '事件闪烁' },
+  [Cmd.MoveEvent]: { name: '设置移动路线' },
+  [Cmd.ProceedWithMovement]: { name: '等待移动完成' },
+  [Cmd.HaltAllMovement]: { name: '停止所有移动' },
+  [Cmd.Wait]: { name: '等待' },
   // ── 音频 / 视频 ───────────────────────────────────────
-  11510: { name: '播放 BGM' },
-  11520: { name: '淡出 BGM' },
-  11530: { name: '暂存 BGM' },
-  11540: { name: '重放 BGM' },
-  11550: { name: '播放 SE' },
-  11560: { name: '播放视频' },
-  11610: { name: '按键监听' },
+  [Cmd.PlayBGM]: { name: '播放 BGM' },
+  [Cmd.FadeOutBGM]: { name: '淡出 BGM' },
+  [Cmd.MemorizeBGM]: { name: '暂存 BGM' },
+  [Cmd.PlayMemorizedBGM]: { name: '重放 BGM' },
+  [Cmd.PlaySound]: { name: '播放 SE' },
+  [Cmd.PlayMovie]: { name: '播放视频' },
+  [Cmd.KeyInputProc]: { name: '按键监听' },
   // ── 地图 ──────────────────────────────────────────────
-  11710: { name: '更改芯片组' },
-  11720: { name: '更改远景' },
-  11740: { name: '更改遇敌步数' },
-  11750: { name: '地图元件替换' },
-  11810: { name: '设置传送点' },
-  11820: { name: '更改传送权限' },
-  11830: { name: '设置逃脱点' },
-  11840: { name: '更改逃脱权限' },
+  [Cmd.ChangeMapTileset]: { name: '更改芯片组' },
+  [Cmd.ChangePBG]: { name: '更改远景' },
+  [Cmd.ChangeEncounterSteps]: { name: '更改遇敌步数' },
+  [Cmd.TileSubstitution]: { name: '地图元件替换' },
+  [Cmd.TeleportTargets]: { name: '设置传送点' },
+  [Cmd.ChangeTeleportAccess]: { name: '更改传送权限' },
+  [Cmd.EscapeTarget]: { name: '设置逃脱点' },
+  [Cmd.ChangeEscapeAccess]: { name: '更改逃脱权限' },
   // ── 菜单 / 存档 ───────────────────────────────────────
-  11910: { name: '打开存档界面' },
-  11930: { name: '更改存档权限' },
-  11950: { name: '打开菜单界面' },
-  11960: { name: '更改菜单权限' },
+  [Cmd.OpenSaveMenu]: { name: '打开存档界面' },
+  [Cmd.ChangeSaveAccess]: { name: '更改存档权限' },
+  [Cmd.OpenMainMenu]: { name: '打开菜单界面' },
+  [Cmd.ChangeMainMenuAccess]: { name: '更改菜单权限' },
   // ── 流程控制 ──────────────────────────────────────────
-  12010: { name: '条件分支' },
-  12110: { name: '标签' },
-  12120: { name: '跳转标签' },
-  12210: { name: '循环' },
-  12220: { name: '跳出循环' },
-  12310: { name: '结束处理' },
-  12320: { name: '消除事件' },
-  12330: { name: '调用事件' },
-  1005: { name: '调用公共事件' },
-  12410: { name: '注释' },
-  12420: { name: '游戏结束' },
-  12510: { name: '返回标题' },
+  [Cmd.ConditionalBranch]: { name: '条件分支' },
+  [Cmd.Label]: { name: '标签' },
+  [Cmd.JumpToLabel]: { name: '跳转标签' },
+  [Cmd.Loop]: { name: '循环' },
+  [Cmd.BreakLoop]: { name: '跳出循环' },
+  [Cmd.EndEventProcessing]: { name: '结束处理' },
+  [Cmd.EraseEvent]: { name: '消除事件' },
+  [Cmd.CallEvent]: { name: '调用事件' },
+  [Cmd.CallCommonEvent]: { name: '调用公共事件' },
+  [Cmd.Comment]: { name: '注释' },
+  [Cmd.GameOver]: { name: '游戏结束' },
+  [Cmd.ReturntoTitleScreen]: { name: '返回标题' },
   // ── 2k3 扩展 ──────────────────────────────────────────
-  1008: { name: '更改角色职业' },
-  1009: { name: '更改战斗指令' },
-  5001: { name: '打开读档界面' },
-  5002: { name: '退出游戏' },
-  5003: { name: '切换 ATB 等待模式' },
-  5004: { name: '切换全屏' },
-  5005: { name: '打开游戏选项' },
+  [Cmd.ChangeClass]: { name: '更改角色职业' },
+  [Cmd.ChangeBattleCommands]: { name: '更改战斗指令' },
+  [Cmd.OpenLoadMenu]: { name: '打开读档界面' },
+  [Cmd.ExitGame]: { name: '退出游戏' },
+  [Cmd.ToggleAtbMode]: { name: '切换 ATB 等待模式' },
+  [Cmd.ToggleFullscreen]: { name: '切换全屏' },
+  [Cmd.OpenVideoOptions]: { name: '打开游戏选项' },
   // ── 战斗事件 ──────────────────────────────────────────
-  1006: { name: '强制逃跑' },
-  1007: { name: '允许连击' },
-  13110: { name: '更改敌人 HP' },
-  13120: { name: '更改敌人 MP' },
-  13130: { name: '更改敌人状态' },
-  13150: { name: '[内部] 显示/隐藏敌人' },
-  13210: { name: '[内部] 更改战斗背景' },
-  13260: { name: '显示动画（战斗）' },
-  13310: { name: '条件分支（战斗）' },
-  13410: { name: '中断战斗' },
+  [Cmd.ForceFlee]: { name: '强制逃跑' },
+  [Cmd.EnableCombo]: { name: '允许连击' },
+  [Cmd.ChangeMonsterHP]: { name: '更改敌人 HP' },
+  [Cmd.ChangeMonsterMP]: { name: '更改敌人 MP' },
+  [Cmd.ChangeMonsterCondition]: { name: '更改敌人状态' },
+  [Cmd.ShowHiddenMonster]: { name: '[内部] 显示/隐藏敌人' },
+  [Cmd.ChangeBattleBG]: { name: '[内部] 更改战斗背景' },
+  [Cmd.ShowBattleAnimationB]: { name: '显示动画（战斗）' },
+  [Cmd.ConditionalBranchB]: { name: '条件分支（战斗）' },
+  [Cmd.TerminateBattle]: { name: '中断战斗' },
   // ── 语法 / 结构标记 ───────────────────────────────────
-  20110: { name: '消息续行' },
-  20140: { name: '选项', role: 'branch' },
-  20141: { name: '选项结束', role: 'end' },
-  22010: { name: '否则', role: 'branch' },
-  22011: { name: '结束分支', role: 'end' },
-  22210: { name: '循环结束', role: 'end' },
-  22410: { name: '注释续行' },
-  23310: { name: '否则（战斗）', role: 'branch' },
-  23311: { name: '结束分支（战斗）', role: 'end' },
-  10: { name: '空行' },
+  [Cmd.ShowMessage2]: { name: '消息续行' },
+  [Cmd.ShowChoiceOption]: { name: '选项', role: 'branch' },
+  [Cmd.ShowChoiceEnd]: { name: '选项结束', role: 'end' },
+  [Cmd.ElseBranch]: { name: '否则', role: 'branch' },
+  [Cmd.EndBranch]: { name: '结束分支', role: 'end' },
+  [Cmd.EndLoop]: { name: '循环结束', role: 'end' },
+  [Cmd.Comment2]: { name: '注释续行' },
+  [Cmd.ElseBranchB]: { name: '否则（战斗）', role: 'branch' },
+  [Cmd.EndBranchB]: { name: '结束分支（战斗）', role: 'end' },
+  [Cmd.End]: { name: '空行' },
   // ── 内部标记（作用未明） ──────────────────────────────
-  20710: { name: '[内部] 胜利处理' },
-  20711: { name: '[内部] 逃跑处理' },
-  20712: { name: '[内部] 失败处理' },
-  20713: { name: '[内部] 战斗结束' },
-  20720: { name: '[内部] 事务开始' },
-  20721: { name: '[内部] 事务结束' },
-  20722: { name: '[内部] 商店结束' },
-  20730: { name: '[内部] 住宿停留' },
-  20731: { name: '[内部] 住宿结束' },
-  20732: { name: '[内部] 旅馆结束' },
+  [Cmd.VictoryHandler]: { name: '[内部] 胜利处理' },
+  [Cmd.EscapeHandler]: { name: '[内部] 逃跑处理' },
+  [Cmd.DefeatHandler]: { name: '[内部] 失败处理' },
+  [Cmd.EndBattle]: { name: '[内部] 战斗结束' },
+  [Cmd.Transaction]: { name: '[内部] 事务开始' },
+  [Cmd.NoTransaction]: { name: '[内部] 事务结束' },
+  [Cmd.EndShop]: { name: '[内部] 商店结束' },
+  [Cmd.Stay]: { name: '[内部] 住宿停留' },
+  [Cmd.NoStay]: { name: '[内部] 住宿结束' },
+  [Cmd.EndInn]: { name: '[内部] 旅馆结束' },
   // ── EasyRPG 扩展 ──────────────────────────────────────
-  2002: { name: '[EasyRPG] 触发事件' },
-  2003: { name: '[EasyRPG] 寻路' },
-  2050: { name: '[EasyRPG] 调用移动动作' },
-  2051: { name: '[EasyRPG] 等待单个移动' },
-  2052: { name: '[EasyRPG] 变量动画' },
-  2053: { name: '[EasyRPG] 设置解释器标志' },
-  2055: { name: '[EasyRPG] 处理 JSON' },
-  2056: { name: '[EasyRPG] 克隆地图事件' },
-  2057: { name: '[EasyRPG] 销毁地图事件' },
-  2058: { name: '[EasyRPG] 字符串图片菜单' },
+  [Cmd.EasyRpgTriggerEventAt]: { name: '[EasyRPG] 触发事件' },
+  [Cmd.EasyRpgPathfinder]: { name: '[EasyRPG] 寻路' },
+  [Cmd.EasyRpgCallMovementAction]: { name: '[EasyRPG] 调用移动动作' },
+  [Cmd.EasyRpgWaitForSingleMovement]: { name: '[EasyRPG] 等待单个移动' },
+  [Cmd.EasyRpgAnimateVariable]: { name: '[EasyRPG] 变量动画' },
+  [Cmd.EasyRpgSetInterpreterFlag]: { name: '[EasyRPG] 设置解释器标志' },
+  [Cmd.EasyRpgProcessJson]: { name: '[EasyRPG] 处理 JSON' },
+  [Cmd.EasyRpgCloneMapEvent]: { name: '[EasyRPG] 克隆地图事件' },
+  [Cmd.EasyRpgDestroyMapEvent]: { name: '[EasyRPG] 销毁地图事件' },
+  [Cmd.EasyRpgStringPictureMenu]: { name: '[EasyRPG] 字符串图片菜单' },
   // ── Maniac Patch 扩展 ─────────────────────────────────
-  3001: { name: '[Maniac] 获取存档信息' },
-  3002: { name: '[Maniac] 新建存档' },
-  3003: { name: '[Maniac] 加载存档' },
-  3004: { name: '[Maniac] 结束读档流程' },
-  3005: { name: '[Maniac] 获取鼠标位置' },
-  3006: { name: '[Maniac] 设置鼠标位置' },
-  3007: { name: '[Maniac] 显示字符串图片' },
-  3008: { name: '[Maniac] 获取图片信息' },
-  3009: { name: '[Maniac] 控制战斗' },
-  3010: { name: '[Maniac] 控制 ATB 等待' },
-  3011: { name: '[Maniac] 更改战斗指令（增强）' },
-  3012: { name: '[Maniac] 获取战斗信息' },
-  3013: { name: '[Maniac] 控制数组' },
-  3014: { name: '[Maniac] 按键监听（增强）' },
-  3015: { name: '[Maniac] 重写地图' },
-  3016: { name: '[Maniac] 控制全局保存' },
-  3017: { name: '[Maniac] 更改图片 ID' },
-  3018: { name: '[Maniac] 设置游戏选项' },
-  3019: { name: '[Maniac] 调用命令' },
-  3020: { name: '[Maniac] 控制字符串' },
-  3021: { name: '[Maniac] 获取游戏信息' },
-  3025: { name: '[Maniac] 编辑图片' },
-  3026: { name: '[Maniac] 写入图片' },
-  3027: { name: '[Maniac] 添加移动路线' },
-  3028: { name: '[Maniac] 编辑图块' },
-  3029: { name: '[Maniac] 控制文本处理' },
-  3032: { name: '[Maniac] 缩放' },
+  [Cmd.ManiacGetSaveInfo]: { name: '[Maniac] 获取存档信息' },
+  [Cmd.ManiacSave]: { name: '[Maniac] 新建存档' },
+  [Cmd.ManiacLoad]: { name: '[Maniac] 加载存档' },
+  [Cmd.ManiacEndLoadProcess]: { name: '[Maniac] 结束读档流程' },
+  [Cmd.ManiacGetMousePosition]: { name: '[Maniac] 获取鼠标位置' },
+  [Cmd.ManiacSetMousePosition]: { name: '[Maniac] 设置鼠标位置' },
+  [Cmd.ManiacShowStringPicture]: { name: '[Maniac] 显示字符串图片' },
+  [Cmd.ManiacGetPictureInfo]: { name: '[Maniac] 获取图片信息' },
+  [Cmd.ManiacControlBattle]: { name: '[Maniac] 控制战斗' },
+  [Cmd.ManiacControlAtbGauge]: { name: '[Maniac] 控制 ATB 等待' },
+  [Cmd.ManiacChangeBattleCommandEx]: { name: '[Maniac] 更改战斗指令（增强）' },
+  [Cmd.ManiacGetBattleInfo]: { name: '[Maniac] 获取战斗信息' },
+  [Cmd.ManiacControlVarArray]: { name: '[Maniac] 控制数组' },
+  [Cmd.ManiacKeyInputProcEx]: { name: '[Maniac] 按键监听（增强）' },
+  [Cmd.ManiacRewriteMap]: { name: '[Maniac] 重写地图' },
+  [Cmd.ManiacControlGlobalSave]: { name: '[Maniac] 控制全局保存' },
+  [Cmd.ManiacChangePictureId]: { name: '[Maniac] 更改图片 ID' },
+  [Cmd.ManiacSetGameOption]: { name: '[Maniac] 设置游戏选项' },
+  [Cmd.ManiacCallCommand]: { name: '[Maniac] 调用命令' },
+  [Cmd.ManiacControlStrings]: { name: '[Maniac] 控制字符串' },
+  [Cmd.ManiacGetGameInfo]: { name: '[Maniac] 获取游戏信息' },
+  [Cmd.ManiacEditPicture]: { name: '[Maniac] 编辑图片' },
+  [Cmd.ManiacWritePicture]: { name: '[Maniac] 写入图片' },
+  [Cmd.ManiacAddMoveRoute]: { name: '[Maniac] 添加移动路线' },
+  [Cmd.ManiacEditTile]: { name: '[Maniac] 编辑图块' },
+  [Cmd.ManiacControlTextProcessing]: { name: '[Maniac] 控制文本处理' },
+  [Cmd.ManiacZoom]: { name: '[Maniac] 缩放' },
 };
+
+/** 未知指令码（可能来自未识别的扩展）返回 undefined */
+export function findCommandMeta(code: number): CommandMeta | undefined {
+  return (EVENT_COMMANDS as Partial<Record<number, CommandMeta>>)[code];
+}
 
 export interface CommandLine {
   /** 原始指令数组中的下标，供后续编辑定位 */
@@ -223,7 +229,7 @@ export interface CommandLine {
  */
 export function buildCommandLines(commands: EventCommand[]): CommandLine[] {
   return commands.map((command, index) => {
-    const meta = EVENT_COMMANDS[command.code];
+    const meta = findCommandMeta(command.code);
     return {
       index,
       code: command.code,
@@ -242,7 +248,7 @@ export type RenderRow =
   | { kind: 'comment'; lines: CommandLine[] }
   | { kind: 'message'; lines: CommandLine[] };
 
-/** 可编辑的文本块类型：注释（12410）与消息（10110）共用一套读写规则 */
+/** 可编辑的文本块类型：注释（Comment）与消息（ShowMessage）共用一套读写规则 */
 export type TextBlockKind = 'comment' | 'message';
 
 /** 一行最多容纳的半角字符数（全角按两个半角计） */
@@ -310,8 +316,8 @@ export function textFitsCommandLimits(text: string): boolean {
 }
 
 /**
- * 渲染分组：把 12410（注释）与后续 22410 合成注释块，
- * 把 10110（显示消息）与后续 20110 合成消息块，其余指令各自一行。
+ * 渲染分组：Comment 与后续 Comment2 合成注释块，
+ * ShowMessage 与后续 ShowMessage2 合成消息块，其余指令各自一行。
  * 每个块仍保留每行对应的行号。
  */
 export function groupCommandLines(lines: CommandLine[]): RenderRow[] {
@@ -320,23 +326,23 @@ export function groupCommandLines(lines: CommandLine[]): RenderRow[] {
   let groupKind: TextBlockKind | null = null;
 
   for (const line of lines) {
-    if (line.code === 12410) {
+    if (line.code === Cmd.Comment) {
       group = [line];
       groupKind = 'comment';
       rows.push({ kind: 'comment', lines: group });
       continue;
     }
-    if (line.code === 10110) {
+    if (line.code === Cmd.ShowMessage) {
       group = [line];
       groupKind = 'message';
       rows.push({ kind: 'message', lines: group });
       continue;
     }
-    if (groupKind === 'comment' && group && line.code === 22410) {
+    if (groupKind === 'comment' && group && line.code === Cmd.Comment2) {
       group.push(line);
       continue;
     }
-    if (groupKind === 'message' && group && line.code === 20110) {
+    if (groupKind === 'message' && group && line.code === Cmd.ShowMessage2) {
       group.push(line);
       continue;
     }

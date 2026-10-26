@@ -1,3 +1,5 @@
+import { Cmd } from './commandCodes';
+
 /** 数据库引擎：2000 与 2003 的 LCF chunk 结构不同 */
 export type Engine = '2k' | '2k3';
 
@@ -29,7 +31,11 @@ export function isRuntime(value: unknown): value is Runtime {
  * 打开读档界面 / 退出游戏属于 2k 内部指令，2k3 才公开。
  */
 export const RPG2003_ONLY_COMMANDS: ReadonlySet<number> = new Set([
-  1008, 1009, 5003, 5004, 5005,
+  Cmd.ChangeClass,
+  Cmd.ChangeBattleCommands,
+  Cmd.ToggleAtbMode,
+  Cmd.ToggleFullscreen,
+  Cmd.OpenVideoOptions,
 ]);
 
 /**
@@ -38,18 +44,63 @@ export const RPG2003_ONLY_COMMANDS: ReadonlySet<number> = new Set([
  * 地图事件页里（RPG Maker 的战场事件内联在地图事件中），不属于此列。
  */
 export const BATTLE_ONLY_COMMANDS: ReadonlySet<number> = new Set([
-  1006, 1007, 13110, 13120, 13130, 13150, 13210, 13260, 13310, 13410, 23310, 23311,
+  Cmd.ForceFlee,
+  Cmd.EnableCombo,
+  Cmd.ChangeMonsterHP,
+  Cmd.ChangeMonsterMP,
+  Cmd.ChangeMonsterCondition,
+  Cmd.ShowHiddenMonster,
+  Cmd.ChangeBattleBG,
+  Cmd.ShowBattleAnimationB,
+  Cmd.ConditionalBranchB,
+  Cmd.TerminateBattle,
+  Cmd.ElseBranchB,
+  Cmd.EndBranchB,
 ]);
 
 /** EasyRPG Player 的扩展指令 */
 export const EASYRPG_COMMANDS: ReadonlySet<number> = new Set([
-  2002, 2003, 2050, 2051, 2052, 2053, 2055, 2056, 2057, 2058,
+  Cmd.EasyRpgTriggerEventAt,
+  Cmd.EasyRpgPathfinder,
+  Cmd.EasyRpgCallMovementAction,
+  Cmd.EasyRpgWaitForSingleMovement,
+  Cmd.EasyRpgAnimateVariable,
+  Cmd.EasyRpgSetInterpreterFlag,
+  Cmd.EasyRpgProcessJson,
+  Cmd.EasyRpgCloneMapEvent,
+  Cmd.EasyRpgDestroyMapEvent,
+  Cmd.EasyRpgStringPictureMenu,
 ]);
 
 /** Maniac Patch 的扩展指令（与 docs/raw_events_table.md 已收录的范围一致） */
 export const MANIAC_COMMANDS: ReadonlySet<number> = new Set([
-  3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010, 3011, 3012, 3013, 3014, 3015, 3016,
-  3017, 3018, 3019, 3020, 3021, 3025, 3026, 3027, 3028, 3029, 3032,
+  Cmd.ManiacGetSaveInfo,
+  Cmd.ManiacSave,
+  Cmd.ManiacLoad,
+  Cmd.ManiacEndLoadProcess,
+  Cmd.ManiacGetMousePosition,
+  Cmd.ManiacSetMousePosition,
+  Cmd.ManiacShowStringPicture,
+  Cmd.ManiacGetPictureInfo,
+  Cmd.ManiacControlBattle,
+  Cmd.ManiacControlAtbGauge,
+  Cmd.ManiacChangeBattleCommandEx,
+  Cmd.ManiacGetBattleInfo,
+  Cmd.ManiacControlVarArray,
+  Cmd.ManiacKeyInputProcEx,
+  Cmd.ManiacRewriteMap,
+  Cmd.ManiacControlGlobalSave,
+  Cmd.ManiacChangePictureId,
+  Cmd.ManiacSetGameOption,
+  Cmd.ManiacCallCommand,
+  Cmd.ManiacControlStrings,
+  Cmd.ManiacGetGameInfo,
+  Cmd.ManiacEditPicture,
+  Cmd.ManiacWritePicture,
+  Cmd.ManiacAddMoveRoute,
+  Cmd.ManiacEditTile,
+  Cmd.ManiacControlTextProcessing,
+  Cmd.ManiacZoom,
 ]);
 
 /**
