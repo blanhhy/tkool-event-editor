@@ -31,6 +31,19 @@ export type DbRefKind =
   | 'map'
   | 'event';
 
+/**
+ * 角色 / 事件引用的特殊 id（与 RPG_RT 的 Game_Character 常量一致）。
+ * 它们不是数据库里的对象 id，而是解释器的「魔法数」，固定指向玩家、载具或事件自身。
+ */
+export const CHARACTER_MAGIC_IDS = {
+  player: 10001,
+  boat: 10002,
+  ship: 10003,
+  airship: 10004,
+  /** 事件自身 */
+  thisEvent: 10005,
+} as const;
+
 export type ParamSpec =
   /** 基本整数，可限定取值范围 */
   | { kind: 'int'; min?: number; max?: number; label?: string }
@@ -42,8 +55,13 @@ export type ParamSpec =
   | { kind: 'enum'; options: Readonly<Record<number, string>>; label?: string }
   /** 文本字面量：存放于指令的 string 字段 */
   | { kind: 'text'; label?: string }
-  /** 数据库对象引用，id 从 1 开始 */
-  | { kind: 'ref'; target: DbRefKind; label?: string }
+  /** 数据库对象引用，id 从 1 开始；magic 中的特殊值同样有效 */
+  | {
+      kind: 'ref';
+      target: DbRefKind;
+      label?: string;
+      magic?: Readonly<Record<number, string>>;
+    }
   /** 「常量或变量」：实际取值由同组内的模式参数决定 */
   | { kind: 'valueOrVariable'; label?: string }
   /** 尚未建模，不做取值校验 */
@@ -72,7 +90,11 @@ const any = { kind: 'any' } as const;
 const text = { kind: 'text', label: '文本' } as const;
 const time = { kind: 'time', label: '时长' } as const;
 const int = (min?: number, max?: number, label?: string): ParamSpec => ({ kind: 'int', min, max, label });
-const ref = (target: DbRefKind, label?: string): ParamSpec => ({ kind: 'ref', target, label });
+const ref = (
+  target: DbRefKind,
+  label?: string,
+  magic?: Readonly<Record<number, string>>,
+): ParamSpec => ({ kind: 'ref', target, label, magic });
 const enumOf = (options: Record<number, string>, label?: string): ParamSpec => ({
   kind: 'enum',
   options,
@@ -258,10 +280,11 @@ const PARAMS: Record<number, ParamSlot[]> = {
     slot(any),
     slot({ kind: 'valueOrVariable', label: '数值' }),
   ],
-  // 调用事件：目标类型决定 id 的含义，只有直接调用公共事件时才是对象引用
+  // 调用事件：目标类型决定 id 的含义
+  //   直接调用地图事件时，id 可以是本事件（魔法数 10005）
   [Cmd.CallEvent]: [
     slot(enumOf({ 0: '公共事件', 1: '地图事件', 2: '间接', 3: '变量', 4: '间接变量' }, '目标')),
-    when(ref('commonEvent', '公共事件'), (params) => params[0] === 0),
+    when(ref('event', '事件', CHARACTER_MAGIC_IDS), (params) => params[0] === 1),
     slot(any),
   ],
   // 调用公共事件
@@ -365,6 +388,8 @@ function checkParam(param: ParamSpec, value: number, env: CommandEnvironment): s
       return value in param.options ? null : `取值 ${value} 不在允许范围内`;
 
     case 'ref': {
+      // 10001 起是解释器的魔法数（玩家 / 载具 / 事件自身），不是数据库 id
+      if (param.magic && value in param.magic) return null;
       if (!Number.isInteger(value) || value < 1) return 'id 必须是从 1 开始的整数';
       const lookup = env.lookup?.[param.target];
       if (lookup && !lookup(value)) return `引用的对象 ${value} 不存在`;
