@@ -12,6 +12,12 @@ interface Props {
   lines: CommandLine[];
   /** 编辑完成：text 为整段文本（换行会拆成多条续行指令） */
   onSave?: (text: string) => void;
+  /** 鼠标进入该指令簇 */
+  onHover?: () => void;
+  /** 鼠标离开该指令簇 */
+  onHoverEnd?: () => void;
+  /** 该块是否属于当前选中的指令簇 */
+  active?: boolean;
 }
 
 /**
@@ -23,7 +29,7 @@ interface Props {
  * 编辑时只保留 `@message(` 前缀，输入框紧随其后，
  * 因此输入框内每一行的起始位置天然对齐。
  */
-export default function MessageBlock({ lines, onSave }: Props) {
+export default function MessageBlock({ lines, onSave, onHover, onHoverEnd, active }: Props) {
   // 一条指令就是一行：残留的换行符直接剔除，否则会多出视觉行、行号错位
   const original = lines.map((line) => stripNewlines(line.text ?? '')).join('\n');
   const [value, setValue] = useState(original);
@@ -62,7 +68,14 @@ export default function MessageBlock({ lines, onSave }: Props) {
   const firstNumber = lines[0].index + 1;
 
   return (
-    <div className="messageBlock" role="listitem">
+    <div
+      className="messageBlock"
+      role="listitem"
+      data-command-index={lines[0].index}
+      data-active={active ? 'true' : undefined}
+      onMouseEnter={onHover}
+      onMouseLeave={onHoverEnd}
+    >
       <div className="commandRow">
         <div className="commandIndex messageIndex">
           {displayLines.map((_, index) => (

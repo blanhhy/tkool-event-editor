@@ -12,6 +12,12 @@ interface Props {
   lines: CommandLine[];
   /** 编辑完成：text 为整段文本（换行会拆成多条续行指令） */
   onSave?: (text: string) => void;
+  /** 鼠标进入该指令簇 */
+  onHover?: () => void;
+  /** 鼠标离开该指令簇 */
+  onHoverEnd?: () => void;
+  /** 该块是否属于当前选中的指令簇 */
+  active?: boolean;
 }
 
 /**
@@ -23,7 +29,7 @@ interface Props {
  * 在单行注释里敲回车，立刻变成三引号块。
  * 三引号只是视觉分隔，不占行号；行号只对应实际指令。
  */
-export default function CommentBlock({ lines, onSave }: Props) {
+export default function CommentBlock({ lines, onSave, onHover, onHoverEnd, active }: Props) {
   // 一条指令就是一行：残留的换行符直接剔除，否则会多出视觉行、行号错位
   const original = lines.map((line) => stripNewlines(line.text ?? '')).join('\n');
   const [value, setValue] = useState(original);
@@ -68,7 +74,14 @@ export default function CommentBlock({ lines, onSave }: Props) {
   const gutter = displayLines.map((_, index) => firstNumber + index);
 
   return (
-    <div className="commentBlock" role="listitem">
+    <div
+      className="commentBlock"
+      role="listitem"
+      data-command-index={lines[0].index}
+      data-active={active ? 'true' : undefined}
+      onMouseEnter={onHover}
+      onMouseLeave={onHoverEnd}
+    >
       {isMultiLine && (
         <div key="fence-top" className="commandRow commentFenceRow" onClick={startEditing}>
           <span className="commandIndex" />

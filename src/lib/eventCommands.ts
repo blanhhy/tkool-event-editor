@@ -394,3 +394,99 @@ export function groupCommandLines(lines: CommandLine[]): RenderRow[] {
 
   return rows;
 }
+
+/** 指令簇：以代码块内的一条指令为起点；带闭合符的块会包住整个子代码块 */
+export interface CommandCluster {
+  /** 簇首行在指令数组中的下标 */
+  index: number;
+  /** 簇所在代码块的缩进层级 */
+  indent: number;
+  /** 簇覆盖的最后一行下标（续行 / 子代码块 / 闭合符），用于整簇高亮 */
+  end: number;
+}
+
+/** 打开子代码块的指令：直到对应闭合符前都属于该块 */
+const BLOCK_OPENERS = new Set<number>([
+  Cmd.ConditionalBranch,
+  Cmd.ConditionalBranchB,
+  Cmd.Loop,
+  Cmd.ShowChoice,
+]);
+
+/** 闭合符：属于所在块，自身不是独立簇 */
+const BLOCK_CLOSERS = new Set<number>([
+  Cmd.EndBranch,
+  Cmd.EndBranchB,
+  Cmd.EndLoop,
+  Cmd.ShowChoiceEnd,
+]);
+
+/** 块中间的标记（否则 / 选项）：属于所在块，自身不是独立簇 */
+const BLOCK_MIDDLE = new Set<number>([Cmd.ElseBranch, Cmd.ElseBranchB, Cmd.ShowChoiceOption]);
+
+/**
+ * 计算每条指令所属的「最小指令簇」。
+ *   if … 子代码块 … end   → if 到 end 在父块里是一个簇
+ *   cmd1 / cmd2 / @>      → 分别是子代码块里的簇
+ * 闭合符与否则/选项标记归属外层块，普通指令（含块头）自成一簇。
+ */
+export function findCommandClusters(lines: CommandLine[]): Map<number, CommandCluster> {
+  const clusters = new Map<number, CommandCluster>();
+  const stack: CommandCluster[] = [];
+  /** 最近一个文本块首行，续行会并入它的簇范围 */
+  let textBlock: CommandCluster | null = null;
+
+  const findBlock = (indent: number): CommandCluster | undefined => {
+    for (let i = stack.length - 1; i >= 0; i -= 1) {
+      if (stack[i].indent === indent) return stack[i];
+    }
+    return undefined;
+  };
+
+  const takeBlock = (indent: number): CommandCluster | undefined => {
+    for (let i = stack.length - 1; i >= 0; i -= 1) {
+      if (stack[i].indent === indent) return stack.splice(i, 1)[0];
+    }
+    return undefined;
+  };
+
+  for (const line of lines) {
+    // 注释 / 消息的续行属于首行所在的簇
+    if (line.code === Cmd.Comment2 || line.code === Cmd.ShowMessage2) {
+      if (textBlock && textBlock.indent === line.indent) {
+        textBlock.end = line.index;
+        clusters.set(line.index, textBlock);
+        continue;
+      }
+    }
+
+    textBlock = null;
+
+    if (BLOCK_CLOSERS.has(line.code)) {
+      // 闭合符属于外层的块：簇位置落回块头，并延伸簇的范围
+      const owner = takeBlock(line.indent);
+      if (owner) {
+        owner.end = line.index;
+        clusters.set(line.index, owner);
+      } else {
+        clusters.set(line.index, { index: line.index, indent: line.indent, end: line.index });
+      }
+      continue;
+    }
+
+    if (BLOCK_MIDDLE.has(line.code)) {
+      const owner = findBlock(line.indent);
+      if (owner) {
+        clusters.set(line.index, owner);
+        continue;
+      }
+    }
+
+    const cluster: CommandCluster = { index: line.index, indent: line.indent, end: line.index };
+    clusters.set(line.index, cluster);
+    if (line.code === Cmd.Comment || line.code === Cmd.ShowMessage) textBlock = cluster;
+    if (BLOCK_OPENERS.has(line.code)) stack.push(cluster);
+  }
+
+  return clusters;
+}

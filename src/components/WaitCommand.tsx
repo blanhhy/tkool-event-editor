@@ -9,6 +9,12 @@ interface Props {
   /** 该行的指令集 / 参数诊断 */
   diagnostics?: Diagnostic[];
   onSave?: (parameters: number[]) => void;
+  /** 鼠标进入该指令簇 */
+  onHover?: () => void;
+  /** 鼠标离开该指令簇 */
+  onHoverEnd?: () => void;
+  /** 该行是否属于当前选中的指令簇 */
+  active?: boolean;
 }
 
 /**
@@ -18,7 +24,14 @@ interface Props {
  *
  * 编辑时可直接输入数字或 true；不符合规范（如负数、文本）则不采用更改。
  */
-export default function WaitCommand({ line, diagnostics, onSave }: Props) {
+export default function WaitCommand({
+  line,
+  diagnostics,
+  onSave,
+  onHover,
+  onHoverEnd,
+  active,
+}: Props) {
   const hasSecondParameter = line.params.length > 1;
   const isInputWait = hasSecondParameter && line.params[1] !== 0;
   const value = line.params[0] ?? 0;
@@ -76,7 +89,14 @@ export default function WaitCommand({ line, diagnostics, onSave }: Props) {
   }
 
   return (
-    <div className="commandRow" role="listitem">
+    <div
+      className="commandRow"
+      role="listitem"
+      data-command-index={line.index}
+      data-active={active ? 'true' : undefined}
+      onMouseEnter={onHover}
+      onMouseLeave={onHoverEnd}
+    >
       <span className="commandIndex">{line.index + 1}</span>
       <IndentGuides depth={line.indent} />
       <div
