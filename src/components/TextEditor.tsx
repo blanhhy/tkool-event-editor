@@ -88,8 +88,32 @@ const roundedSelection = ViewPlugin.fromClass(
     };
 
     private draw() {
-      const layer = this.view.scrollDOM.querySelector('.cm-selectionLayer');
+      const view = this.view;
+      const layer = view.scrollDOM.querySelector('.cm-selectionLayer');
       const bands: SelectionBand[] = [];
+
+      // CodeMirror 给选区/光标算的是文字盒（比行盒矮），统一拉齐到整行高，
+      // 与当前行高亮的行盒高度一致
+      const lineHeight = view.defaultLineHeight;
+      const scroll = view.scrollDOM;
+      const baseTop = scroll.getBoundingClientRect().top - scroll.scrollTop;
+      const firstLine = view.contentDOM.querySelector('.cm-line');
+      const anchor = firstLine ? firstLine.getBoundingClientRect().top - baseTop : 0;
+      const snapTop = (top: number) => anchor + Math.round((top - anchor) / lineHeight) * lineHeight;
+
+      // 跨行选区里，中间各行 CodeMirror 只给一个又高又长的矩形；
+      // 要按行盒切开，否则中间的若干行会整段丢失
+      const pushBands = (left: number, width: number, top: number, height: number) => {
+        const bottom = top + height;
+        const from = Math.floor((top - anchor) / lineHeight);
+        const to = Math.ceil((bottom - anchor) / lineHeight);
+        for (let row = from; row <= to; row += 1) {
+          const rowTop = anchor + row * lineHeight;
+          const overlap = Math.min(bottom, rowTop + lineHeight) - Math.max(top, rowTop);
+          if (overlap <= lineHeight / 2) continue;
+          bands.push({ left, top: rowTop, width, height: lineHeight });
+        }
+      };
 
       if (layer) {
         for (const node of Array.from(layer.children)) {
@@ -102,7 +126,18 @@ const roundedSelection = ViewPlugin.fromClass(
           const height = parseFloat(element.style.height);
           if (![left, top, width, height].every(Number.isFinite)) continue;
           if (width <= 0 || height <= 0) continue;
-          bands.push({ left, top, width, height });
+          pushBands(left, width, top, height);
+        }
+      }
+
+      // 光标同理：高度改成整行高，并按行盒居中补偿（top 仍是文字盒顶部）
+      const cursor = scroll.querySelector('.cm-cursor') as HTMLElement | null;
+      if (cursor) {
+        const top = parseFloat(cursor.style.top);
+        const height = parseFloat(cursor.style.height);
+        if (Number.isFinite(top) && Number.isFinite(height) && height > 0) {
+          view.dom.style.setProperty('--cm-cursor-height', `${lineHeight}px`);
+          view.dom.style.setProperty('--cm-cursor-shift', `${snapTop(top) - top}px`);
         }
       }
 
@@ -144,6 +179,11 @@ const appTheme = EditorView.theme({
   },
   '.cm-content': {
     caretColor: '#7fb0ff',
+  },
+  // 光标与选区都占满整行高，与当前行高亮同高（高度/偏移由 roundedSelection 量出）
+  '.cm-cursor': {
+    height: 'var(--cm-cursor-height, 1.2em) !important',
+    marginTop: 'var(--cm-cursor-shift, 0px)',
   },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
     backgroundColor: 'rgba(95, 145, 220, 0.28)',
