@@ -1101,6 +1101,13 @@ button {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* 焦点行：比选择区更明显的强调 */
+.commandRow[data-focused='true'],
+.messageLine[data-focused='true'],
+.commentLine[data-focused='true'] {
+  background: rgba(95, 145, 220, 0.18);
+}
+
 .commandIndex {
   flex: 0 0 auto;
   width: 46px;

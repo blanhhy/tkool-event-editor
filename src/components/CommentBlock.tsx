@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import {
   COMMENT_LIMITS,
   splitCommandText,
@@ -12,24 +12,22 @@ interface Props {
   lines: CommandLine[];
   /** 编辑完成：text 为整段文本（换行会拆成多条续行指令） */
   onSave?: (text: string) => void;
-  /** 鼠标进入该指令簇 */
-  onHover?: () => void;
-  /** 鼠标离开该指令簇 */
-  onHoverEnd?: () => void;
+  /** 点击选中该指令簇；lineIndex 为点击位置所在的行 */
+  onSelect?: (lineIndex: number) => void;
   /** 该块是否属于当前选中的指令簇 */
   active?: boolean;
+  /** 焦点行（0 基下标）；不在本块内时为 null */
+  focusIndex?: number | null;
 }
 
 /**
- * 注释块渲染：
- *   单行（只有 Comment）        →  # 内容
- *   多行（Comment + Comment2…） →  Python 风格三引号块
+ * 注释块渲染（EasyRPG 风格）：
+ *   首行 → 注释: 内容
+ *   续行 → 内容与首行冒号之后的内容左对齐
  *
- * 编辑时也按当前文本的行数即时切换形态（乐观渲染）：
- * 在单行注释里敲回车，立刻变成三引号块。
- * 三引号只是视觉分隔，不占行号；行号只对应实际指令。
+ * 注释是唯一保留行内编辑的指令：对着代码写注记更顺手。
  */
-export default function CommentBlock({ lines, onSave, onHover, onHoverEnd, active }: Props) {
+export default function CommentBlock({ lines, onSave, onSelect, active, focusIndex }: Props) {
   // 一条指令就是一行：残留的换行符直接剔除，否则会多出视觉行、行号错位
   const original = lines.map((line) => stripNewlines(line.text ?? '')).join('\n');
   const [value, setValue] = useState(original);
@@ -78,13 +76,14 @@ export default function CommentBlock({ lines, onSave, onHover, onHoverEnd, activ
       role="listitem"
       data-command-index={lines[0].index}
       data-active={active ? 'true' : undefined}
-      onMouseEnter={onHover}
-      onMouseLeave={onHoverEnd}
+      onClick={(event) => onSelect?.(clickedLineIndex(event, lines[0].index))}
     >
       <div className="commandRow">
         <div className="commandIndex commentIndex">
           {gutter.map((number, index) => (
-            <div key={index}>{number ?? '\u00A0'}</div>
+            <div key={index} data-line-index={lines[0].index + index}>
+              {number ?? '\u00A0'}
+            </div>
           ))}
         </div>
 
@@ -113,13 +112,24 @@ export default function CommentBlock({ lines, onSave, onHover, onHoverEnd, activ
             </div>
           ) : (
             <div className="commentLines" onClick={startEditing}>
-              <div className="commentLine">
+              <div
+                className="commentLine"
+                data-line-index={lines[0].index}
+                data-focused={focusIndex === lines[0].index ? 'true' : undefined}
+              >
                 <span className="commandName">注释</span>
                 <span className="commandPunct">: </span>
                 <span className="commentText">{displayLines[0] || '\u00A0'}</span>
               </div>
               {displayLines.slice(1).map((text, index) => (
-                <div key={index} className="commentLine">
+                <div
+                  key={index}
+                  className="commentLine"
+                  data-line-index={lines[0].index + index + 1}
+                  data-focused={
+                    focusIndex === lines[0].index + index + 1 ? 'true' : undefined
+                  }
+                >
                   {/* 续行用同构的不可见前缀占位，保证与首行文字左缘严格对齐 */}
                   <span className="commandPrefixSpacer" aria-hidden="true">
                     <span className="commandName">注释</span>
@@ -134,4 +144,11 @@ export default function CommentBlock({ lines, onSave, onHover, onHoverEnd, activ
       </div>
     </div>
   );
+}
+
+/** 点击位置所在的行号；点在行间空白处时回落到块首行 */
+function clickedLineIndex(event: MouseEvent, fallback: number): number {
+  const target = event.target as HTMLElement | null;
+  const line = target?.closest<HTMLElement>('[data-line-index]');
+  return line?.dataset.lineIndex ? Number(line.dataset.lineIndex) : fallback;
 }

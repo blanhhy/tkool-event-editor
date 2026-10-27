@@ -20,9 +20,6 @@ import IndentGuides from './IndentGuides';
 import InsertButton from './InsertButton';
 import MessageBlock from './MessageBlock';
 
-/** 鼠标移出指令簇后，留给移向加号按钮的宽限时间 */
-const HOVER_HIDE_DELAY = 120;
-
 interface Props {
   title: string;
   commands: CommandLine[];
@@ -50,53 +47,132 @@ export default function EventPageView({
   const [insertTarget, setInsertTarget] = useState<Pick<CommandCluster, 'index' | 'indent'> | null>(
     null,
   );
-  /** 当前 hover 到的最小指令簇，top 为该簇首行的纵向位置 */
-  const [hovered, setHovered] = useState<(CommandCluster & { top: number }) | null>(null);
+  /**
+   * 当前选择：focus 是焦点行（即当前选中的那一行），
+   * extended 表示已按 Shift 进入多选，anchor 是 Shift 扩展的起点行。
+   * 单选时选择区是焦点行所属的最小簇；多选时选择区按簇扩展到 anchor 与 focus 之间。
+   */
+  const [selection, setSelection] = useState<{
+    anchor: number;
+    focus: number;
+    extended: boolean;
+    top: number;
+  } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const hideTimer = useRef<number | null>(null);
 
   /** 每条指令所属的最小指令簇 */
   const clusters = useMemo(() => findCommandClusters(commands), [commands]);
 
-  const cancelHide = useCallback(() => {
-    if (hideTimer.current !== null) {
-      window.clearTimeout(hideTimer.current);
-      hideTimer.current = null;
+  /** 选择区：单选时是焦点行所属的最小簇；多选时覆盖 anchor 到 focus 之间所有行所在的整簇 */
+  const span = useMemo(() => {
+    if (!selection) return null;
+
+    if (!selection.extended) {
+      const cluster = clusters.get(selection.focus);
+      return cluster
+        ? { start: cluster.index, end: cluster.end }
+        : { start: selection.focus, end: selection.focus };
     }
-  }, []);
 
-  const scheduleHide = useCallback(() => {
-    cancelHide();
-    hideTimer.current = window.setTimeout(() => {
-      hideTimer.current = null;
-      setHovered(null);
-    }, HOVER_HIDE_DELAY);
-  }, [cancelHide]);
+    const firstRow = Math.min(selection.anchor, selection.focus);
+    const lastRow = Math.max(selection.anchor, selection.focus);
+    let start = firstRow;
+    let end = lastRow;
 
-  useEffect(() => cancelHide, [cancelHide]);
+    // 逐行并入所在簇：焦点行在簇中间时，选择区仍是完整的最小簇
+    for (let row = firstRow; row <= lastRow; row += 1) {
+      const cluster = clusters.get(row);
+      if (!cluster) continue;
+      start = Math.min(start, cluster.index);
+      end = Math.max(end, cluster.end);
+    }
 
-  /** 选中某个指令簇，并把加号定位到簇首行的上边缘 */
-  const hoverCluster = useCallback(
-    (cluster: CommandCluster) => {
-      cancelHide();
-      const row = listRef.current?.querySelector<HTMLElement>(
-        `[data-command-index="${cluster.index}"]`,
-      );
+    return { start, end };
+  }, [selection, clusters]);
+
+  /** 选中一段行；anchor 为 Shift 起点行，focus 为焦点行，extended 表示是否多选 */
+  const selectRows = useCallback(
+    (anchor: number, focus: number, extended: boolean) => {
+      const list = listRef.current;
+      if (!list) return;
+
+      // 加号定位到选择区第一行：单选时是焦点行的簇首，多选时取两端簇首中靠前的
+      const head = extended
+        ? Math.min(clusters.get(anchor)?.index ?? anchor, clusters.get(focus)?.index ?? focus)
+        : clusters.get(focus)?.index ?? focus;
+      const row = list.querySelector<HTMLElement>(`[data-command-index="${head}"]`);
       if (!row) return;
 
       const top = row.offsetTop;
-      setHovered((prev) =>
-        prev && prev.index === cluster.index && prev.top === top
+      setSelection((prev) =>
+        prev &&
+        prev.anchor === anchor &&
+        prev.focus === focus &&
+        prev.extended === extended &&
+        prev.top === top
           ? prev
-          : { ...cluster, top },
+          : { anchor, focus, extended, top },
       );
     },
-    [cancelHide],
+    [clusters],
   );
 
-  /** 某条指令所属的簇（与渲染层保持一致） */
-  const clusterFor = (line: CommandLine): CommandCluster =>
-    clusters.get(line.index) ?? { index: line.index, indent: line.indent, end: line.index };
+  // 焦点行滚出可视区时自动滚动，保证键盘导航时焦点行始终可见
+  const focusRow = selection?.focus ?? null;
+  useEffect(() => {
+    if (focusRow === null) return;
+    const list = listRef.current;
+    if (!list) return;
+
+    const row =
+      list.querySelector<HTMLElement>(`[data-line-index="${focusRow}"]`) ??
+      list.querySelector<HTMLElement>(`[data-command-index="${focusRow}"]`);
+    if (!row) return;
+
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+
+    if (top < list.scrollTop) {
+      list.scrollTop = top;
+    } else if (bottom > list.scrollTop + list.clientHeight) {
+      list.scrollTop = bottom - list.clientHeight;
+    }
+  }, [focusRow]);
+
+  // 选中后可用方向键移动：焦点行始终逐行移动，Shift 时选择区按簇扩展
+  useEffect(() => {
+    if (!selection) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+
+      // 焦点在输入框里时不拦截
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      const dir = event.key === 'ArrowUp' ? -1 : 1;
+      const nextRow = Math.min(Math.max(selection.focus + dir, 0), commands.length);
+      if (nextRow === selection.focus) return;
+
+      if (event.shiftKey) {
+        // Shift：焦点行仍逐行移动，起点行保持不变，选择区随之按簇扩展
+        selectRows(selection.anchor, nextRow, true);
+        return;
+      }
+
+      // 普通移动：选择区回到焦点行的最小簇
+      selectRows(nextRow, nextRow, false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selection, commands.length, selectRows]);
 
   // 指令集归属与参数合法性：一条指令可能同时有多条诊断
   const diagnosticsByIndex = useMemo(() => {
@@ -142,12 +218,17 @@ export default function EventPageView({
             // 文本块的簇是整块，取首行；闭合符/否则标记的簇落回外层块头
             const first = row.kind === 'command' ? row.line : row.lines[0];
             const last = row.kind === 'command' ? row.line : row.lines[row.lines.length - 1];
-            const cluster = clusterFor(first);
             const rowProps = {
-              onHover: () => hoverCluster(cluster),
-              onHoverEnd: scheduleHide,
-              // 整簇高亮：该行完整落在当前选中的簇范围内
-              active: hovered !== null && first.index >= hovered.index && last.index <= hovered.end,
+              // 点击哪一行，焦点就落在哪一行；选择区仍是该行所属的最小簇
+              onSelect: (lineIndex: number) => selectRows(lineIndex, lineIndex, false),
+              active: span !== null && first.index >= span.start && last.index <= span.end,
+              // 焦点行单独强调：多行文本块内部按行判断
+              focusIndex:
+                selection !== null &&
+                selection.focus >= first.index &&
+                selection.focus <= last.index
+                  ? selection.focus
+                  : null,
             };
 
             return row.kind === 'comment' ? (
@@ -177,22 +258,28 @@ export default function EventPageView({
           <div
             className="commandRow insertRow"
             data-command-index={commands.length}
-            data-active={hovered?.index === commands.length ? 'true' : undefined}
-            onMouseEnter={() =>
-              hoverCluster({ index: commands.length, indent: 0, end: commands.length })
+            data-active={
+              selection !== null &&
+              (selection.anchor === commands.length || selection.focus === commands.length)
+                ? 'true'
+                : undefined
             }
-            onMouseLeave={scheduleHide}
+            data-focused={selection?.focus === commands.length ? 'true' : undefined}
+            onClick={() => selectRows(commands.length, commands.length, false)}
           >
             <span className="commandIndex">{commands.length + 1}</span>
           </div>
 
-          {/* 当前簇的插入按钮：统一渲染，闭合符的簇也能定位到块头 */}
-          {hovered && insertTarget === null && (
+          {/* 单选时的插入按钮：定位到选择区第一行；多选时不显示，避免加号乱动 */}
+          {selection && !selection.extended && insertTarget === null && (
             <InsertButton
-              top={hovered.top}
-              onHoverStart={cancelHide}
-              onHoverEnd={scheduleHide}
-              onInsert={() => setInsertTarget({ index: hovered.index, indent: hovered.indent })}
+              top={selection.top}
+              onInsert={() =>
+                setInsertTarget({
+                  index: clusters.get(selection.focus)?.index ?? selection.focus,
+                  indent: clusters.get(selection.focus)?.indent ?? 0,
+                })
+              }
             />
           )}
         </div>
@@ -210,15 +297,15 @@ export default function EventPageView({
 function CommandRow({
   line,
   diagnostics,
-  onHover,
-  onHoverEnd,
+  onSelect,
   active,
+  focusIndex,
 }: {
   line: CommandLine;
   diagnostics?: Diagnostic[];
-  onHover?: () => void;
-  onHoverEnd?: () => void;
+  onSelect?: (lineIndex: number) => void;
   active?: boolean;
+  focusIndex?: number | null;
 }) {
   // 指令 10 是可插入新代码的空行，标成 @> 提示插入点；> 用标点配色
   const isEmptySlot = line.code === Cmd.End;
@@ -230,8 +317,8 @@ function CommandRow({
       role="listitem"
       data-command-index={line.index}
       data-active={active ? 'true' : undefined}
-      onMouseEnter={onHover}
-      onMouseLeave={onHoverEnd}
+      data-focused={focusIndex === line.index ? 'true' : undefined}
+      onClick={() => onSelect?.(line.index)}
     >
       <span className="commandIndex">{line.index + 1}</span>
       <IndentGuides depth={line.indent} />
