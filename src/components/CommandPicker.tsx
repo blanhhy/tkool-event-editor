@@ -117,13 +117,8 @@ export default function CommandPicker({
   const gridHeight = rows * ITEM_HEIGHT + (rows - 1) * ITEM_GAP;
 
   return (
-    <div
-      className="commandPickerOverlay"
-      onMouseDown={(event) => {
-        // 只有点在遮罩本身时才关闭
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
+    // 点击外部不关闭：只能通过右上角关闭、取消或 Esc 退出
+    <div className="commandPickerOverlay">
       <div
         className="commandPicker"
         role="dialog"
