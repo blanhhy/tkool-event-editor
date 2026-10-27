@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buildCommandPages, splitCommandColumns, type CommandEntry } from '../lib/commandCatalog';
 import type { CommandEnvironment } from '../lib/commandSpec';
+import type { CommandDraft } from '../lib/eventCommands';
 import CommandParamsForm from './CommandParamsForm';
 
 /** 条目高度与间距，用于把面板撑到「堆满一列指令」的高度 */
@@ -14,15 +15,17 @@ interface Props {
   onClose: () => void;
   /** 当前工程环境：决定页数（2k 没有第 4 页）与是否追加扩展指令集页 */
   environment?: CommandEnvironment;
+  /** 参数表单点「确定」：把配置好的指令交给事件页插入 */
+  onInsert?: (draft: CommandDraft) => void;
 }
 
 /**
  * 事件指令选择弹窗，顺序与 RPG Maker 2003 的「插入指令」面板一致。
  * 敌群事件页使用「战斗事件指令」面板；第三方指令集各自占新页。
  * 固定两列、固定高度；条目宽度取所有页里最长的指令名。
- * 选中指令后右侧显示参数表单；写回逻辑尚未接入。
+ * 选中指令后右侧显示参数表单，确定后交给事件页插入。
  */
-export default function CommandPicker({ open, onClose, environment }: Props) {
+export default function CommandPicker({ open, onClose, environment, onInsert }: Props) {
   const [activePage, setActivePage] = useState(0);
   const [selected, setSelected] = useState<CommandEntry | null>(null);
   const [itemWidth, setItemWidth] = useState<number | null>(null);
@@ -160,7 +163,10 @@ export default function CommandPicker({ open, onClose, environment }: Props) {
                 label={selected.label}
                 engine={engine}
                 onCancel={onClose}
-                onConfirm={() => onClose()}
+                onConfirm={(draft) => {
+                  onInsert?.(draft);
+                  onClose();
+                }}
               />
             ) : (
               <div className="commandParamsPlaceholder">选择一个指令以配置参数</div>

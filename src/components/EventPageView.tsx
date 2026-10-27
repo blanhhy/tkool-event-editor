@@ -3,9 +3,11 @@ import type { EventCommand } from 'rpgrt';
 import { Cmd } from '../lib/commandCodes';
 import { buildCommandDisplay, type DisplayTone } from '../lib/commandDisplay';
 import {
+  buildInsertedCommands,
   findCommandClusters,
   groupCommandLines,
   type CommandCluster,
+  type CommandDraft,
   type CommandLine,
   type TextBlockKind,
 } from '../lib/eventCommands';
@@ -231,6 +233,23 @@ export default function EventPageView({
     [span, clusters, commands.length, onReplaceCommands],
   );
 
+  /** 在加号位置插入选择弹窗里配置好的指令 */
+  const insertCommand = useCallback(
+    (draft: CommandDraft) => {
+      if (!insertTarget || !onReplaceCommands) return;
+
+      const lines = buildInsertedCommands(draft, insertTarget.indent);
+      if (lines.length === 0) return;
+
+      pendingSelection.current = {
+        anchor: insertTarget.index,
+        focus: insertTarget.index + lines.length - 1,
+      };
+      onReplaceCommands(insertTarget.index, 0, lines);
+    },
+    [insertTarget, onReplaceCommands],
+  );
+
   // 暴露给编辑菜单与快捷键
   useEffect(() => {
     if (!apiRef) return;
@@ -433,6 +452,7 @@ export default function EventPageView({
         open={insertTarget !== null}
         onClose={() => setInsertTarget(null)}
         environment={environment}
+        onInsert={insertCommand}
       />
     </div>
   );

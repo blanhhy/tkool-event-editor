@@ -7,6 +7,7 @@ import {
   resolveField,
   type CommandFormModel,
 } from '../lib/commandForm';
+import type { CommandDraft } from '../lib/eventCommands';
 import {
   COMMAND_DIALOGS,
   type DialogField,
@@ -17,12 +18,6 @@ import {
   type GroupRow,
   type GroupSection,
 } from '../lib/commandDialogs';
-
-export interface CommandDraft {
-  code: number;
-  parameters: number[];
-  text?: string;
-}
 
 interface Props {
   code: number;

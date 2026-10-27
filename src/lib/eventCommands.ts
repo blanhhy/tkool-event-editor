@@ -512,3 +512,92 @@ export function findCommandClusters(lines: CommandLine[]): Map<number, CommandCl
 
   return clusters;
 }
+
+/** 待插入指令的初始数据（来自「插入指令」弹窗的参数表单） */
+export interface CommandDraft {
+  code: number;
+  parameters: number[];
+  text?: string;
+}
+
+/** 打开子代码块的指令 → 它需要的闭合符 */
+const INSERT_BLOCK_CLOSERS: Record<number, number> = {
+  [Cmd.ConditionalBranch]: Cmd.EndBranch,
+  [Cmd.ConditionalBranchB]: Cmd.EndBranchB,
+  [Cmd.Loop]: Cmd.EndLoop,
+};
+
+/** 显示选项：可见选项上限（索引 0..3） */
+const CHOICE_VISIBLE_LIMIT = 4;
+/** 显示选项：取消时新建分支的分支索引（固定 4，不参与选项显示） */
+const CHOICE_CANCEL_INDEX = 4;
+
+/**
+ * 把弹窗里配置好的一条指令展开成实际写入的指令序列。
+ * 消息 / 注释按限制拆成首行 + 续行；带代码块的指令补齐空行（@>）与闭合符，
+ * 与 RPG Maker 2000/2003 自己写出的结构保持一致。
+ */
+export function buildInsertedCommands(draft: CommandDraft, indent: number): EventCommand[] {
+  const make = (
+    code: number,
+    level: number,
+    parameters: number[] = [],
+    string = '',
+  ): EventCommand => ({
+    code,
+    indent: Math.max(0, level),
+    parameters,
+    string,
+  });
+
+  if (draft.code === Cmd.Comment || draft.code === Cmd.ShowMessage) {
+    const isComment = draft.code === Cmd.Comment;
+    const lines = splitCommandText(draft.text ?? '', isComment ? COMMENT_LIMITS : MESSAGE_LIMITS);
+    const continuation = isComment ? Cmd.Comment2 : Cmd.ShowMessage2;
+    return lines.map((line, index) =>
+      make(index === 0 ? draft.code : continuation, indent, [], line),
+    );
+  }
+
+  // 显示选项：结构由参数 0（取消方式）决定
+  //   params[0] = 取消索引 + 1：0 禁止取消，1..4 取消时跳到选项 1..4，
+  //   5 取消时新建分支（固定为索引 4 的隐藏分支，R48: choice_index_magic 4 = invisibleCancel）
+  // 运行时的选项只取 parameters[0] < 4 的 20140（EasyRPG Player GetChoices），
+  // 所以可见选项最多 4 个，索引必须与顺序一致；隐藏分支固定索引 4。
+  if (draft.code === Cmd.ShowChoice) {
+    const cancelType = draft.parameters[0] ?? 0;
+    const labels = (draft.text ?? '')
+      .split(/\r\n|\r|\n/)
+      .slice(0, CHOICE_VISIBLE_LIMIT)
+      .map((line) => line.trim());
+    while (labels.length > 0 && labels[labels.length - 1] === '') labels.pop();
+
+    // 取消时跳回某个选项：该选项必须存在，缺的补空行以保持索引对应
+    if (cancelType >= 1 && cancelType <= CHOICE_VISIBLE_LIMIT) {
+      while (labels.length < cancelType) labels.push('');
+    }
+    if (labels.length === 0) labels.push('');
+
+    const commands = [make(Cmd.ShowChoice, indent, [cancelType], labels.join(', '))];
+    const pushBranch = (index: number, label: string) => {
+      commands.push(make(Cmd.ShowChoiceOption, indent, [index], label));
+      commands.push(make(Cmd.End, indent + 1));
+    };
+    labels.forEach((label, index) => pushBranch(index, label));
+    // 取消时新建分支：它的分支体是索引 4（不参与选项显示）
+    if (cancelType === CHOICE_CANCEL_INDEX + 1) pushBranch(CHOICE_CANCEL_INDEX, '');
+    commands.push(make(Cmd.ShowChoiceEnd, indent));
+    return commands;
+  }
+
+  const closer = INSERT_BLOCK_CLOSERS[draft.code];
+  if (closer !== undefined) {
+    return [
+      make(draft.code, indent, draft.parameters, draft.text ?? ''),
+      make(Cmd.End, indent + 1),
+      make(closer, indent),
+    ];
+  }
+
+  return [make(draft.code, indent, draft.parameters, draft.text ?? '')];
+}
