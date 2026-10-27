@@ -1,5 +1,17 @@
 /* Tkool Event Editor — 壳体与基础样式 */
 
+/*
+ * 事件页等宽字体：JetBrains Maple Mono 的全角字宽严格是半角的 2 倍，
+ * 续行的左对齐缩进才能用整数个空格与首行前缀精确对齐。
+ */
+@font-face {
+  font-family: 'JetBrains Maple Mono';
+  src: url('./assets/fonts/JetBrainsMapleMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --color-bg: #1a1d23;
   --color-editor-bg: #282c34;
@@ -37,7 +49,8 @@
   --side-panel-w: 248px;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', 'Microsoft YaHei UI', 'Noto Sans SC', monospace;
+  --font-mono: 'JetBrains Maple Mono', ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Consolas,
+    'Liberation Mono', 'Microsoft YaHei UI', 'Noto Sans SC', monospace;
 }
 
 * {
@@ -1094,6 +1107,9 @@ button {
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.7;
+  /* 事件正文按纯文本处理：指令名、参数、注释与消息都可自由划选 */
+  user-select: text;
+  cursor: text;
 }
 
 .commandRow {
@@ -1103,16 +1119,38 @@ button {
   padding-right: 14px;
 }
 
-/* 整簇高亮：当前选中的指令簇覆盖的所有行 */
-.commandRow[data-active='true'],
-.commentBlock[data-active='true'],
-.messageBlock[data-active='true'] {
-  background: rgba(255, 255, 255, 0.03);
+/*
+ * 事件页只有两种高亮色，取内置文本编辑器实际渲染出来的值：
+ *   焦点色 = 当前行 rgba(102, 153, 255, 0.043)
+ *   选择色 = 选区   rgb(62, 68, 81)（#3E4451）
+ * 叠放顺序与编辑器一致：选区在下，当前行的焦点色叠在上面。
+ */
+.commandRow[data-active='true'] > .commandContent,
+.commentBlock[data-active='true'] .commentLine,
+.messageBlock[data-active='true'] .messageLine {
+  background-color: rgb(62, 68, 81);
 }
 
-/* 焦点行：比选择区更明显的强调（文本块用 .blockFocusBand 实现同宽高亮） */
-.commandRow[data-focused='true'] {
-  background: rgba(95, 145, 220, 0.18);
+/* 焦点色用 background-image 叠加，不覆盖下面的选择色 */
+.commandRow[data-focused='true'] > .commandContent,
+.commentLine[data-focused='true'],
+.messageLine[data-focused='true'],
+.commentBlock[data-active='true'] .commentLine[data-focused='true'],
+.messageBlock[data-active='true'] .messageLine[data-focused='true'] {
+  background-image: linear-gradient(
+    rgba(102, 153, 255, 0.043),
+    rgba(102, 153, 255, 0.043)
+  );
+}
+
+/*
+ * 原生文本选区存在时，行底的选择色让位给自绘选区带，
+ * 焦点色仍然叠在选区带之上（与编辑器里当前行压在选区之上的效果一致）。
+ */
+.commandList[data-text-selecting='true'] .commandRow[data-active='true'] > .commandContent,
+.commandList[data-text-selecting='true'] .commentBlock[data-active='true'] .commentLine,
+.commandList[data-text-selecting='true'] .messageBlock[data-active='true'] .messageLine {
+  background-color: transparent;
 }
 
 .commandIndex {
@@ -1122,6 +1160,7 @@ button {
   padding-right: 8px;
   text-align: right;
   color: var(--color-text-dim);
+  /* 行号是装饰：不参与划选，复制的描述文本不会混入行号 */
   user-select: none;
 }
 
@@ -1159,54 +1198,55 @@ button {
   min-height: 1.7em;
 }
 
+/* 末尾插入行的内容区也占一行高，选中高亮不会缩成一条线 */
+.insertRow > .commandContent {
+  min-height: 1.7em;
+}
+
 /* 缩进只作用于指令内容，行号列保持固定 */
 .commandContent {
   flex: 1;
   min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
   /* 一条指令固定一行：不按宽度折行，超宽时整行横向滚动 */
   white-space: pre;
 }
 
-/* 彩虹缩进参考线：每层一个 18px 的格子，格左边缘画一条竖线 */
-.indentGuides {
-  flex: 0 0 auto;
-  align-self: stretch;
-  display: flex;
+/* 缩进用真实空格表示（每层 2 个），与文本编辑器一致，可随整行一起划选 */
+.commandIndent {
+  white-space: pre;
+}
+
+/*
+ * 选区样式与内置文本编辑器保持一致：
+ * 隐藏浏览器默认的分段高亮（白字蓝底、各段高矮不一），改由下方自绘的整行色带呈现。
+ * 文字保持原有语法色。
+ */
+.commandList ::selection {
+  background: transparent;
+  color: inherit;
+}
+
+/* 自绘选区层：每行一条整行高的半透明色带，行与行之间不重叠、不留缝 */
+.textSelectionLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   pointer-events: none;
-  user-select: none;
 }
 
-.indentGuide {
-  flex: 0 0 18px;
-  border-left: 1px solid currentColor;
-  opacity: 0.45;
+.textSelectionRect {
+  position: absolute;
+  /* 与文本编辑器选区同色（oneDark #3E4451） */
+  background: rgb(62, 68, 81);
 }
 
-.indentGuide[data-level='0'] {
-  color: var(--indent-0);
-}
-
-.indentGuide[data-level='1'] {
-  color: var(--indent-1);
-}
-
-.indentGuide[data-level='2'] {
-  color: var(--indent-2);
-}
-
-.indentGuide[data-level='3'] {
-  color: var(--indent-3);
-}
-
-.indentGuide[data-level='4'] {
-  color: var(--indent-4);
-}
-
-.indentGuide[data-level='5'] {
-  color: var(--indent-5);
+/* 行内容绘制在选区层之上 */
+.commandList > .commandRow,
+.commandList > .commentBlock,
+.commandList > .messageBlock,
+.commandList > .insertRow {
+  position: relative;
+  z-index: 1;
 }
 
 /* 默认指令样式 @名字(裸参数, text="文本")：各片段紧挨着排列 */
@@ -1244,17 +1284,18 @@ button {
   color: var(--syntax-boolean);
 }
 
-/* 文本续行的前缀占位：与首行前缀完全同构，仅不可见，用于精确对齐 */
-.commandPrefixSpacer {
-  flex: 0 0 auto;
-  visibility: hidden;
-  user-select: none;
+/*
+ * 文本续行的左对齐缩进：JetBrains Maple Mono 的全角宽度是半角的 2 倍，
+ * 「注释: 」「显示文字: 」的宽度因此恰好是整数个半角空格（6 / 10），
+ * 续行直接用真实空格对齐，也就能像普通文本一样被划选。
+ */
+.commandTextSpacer {
+  white-space: pre;
 }
 
 /* 插入点提示符：@ 之后的 > 用标点配色（与编辑器正文同色） */
 .commandPunct {
   color: var(--syntax-punctuation);
-  user-select: none;
 }
 
 .commandContent[data-role='branch'] .commandName {
@@ -1312,8 +1353,18 @@ button {
 }
 
 .commentLine {
+  display: block;
+  /* 文本块按纯文本排版，划选时不会在片段之间插入换行 */
+  white-space: pre;
+}
+
+/* 行内编辑中的注释行：命令名 / 冒号 / 文本域仍然横向排列 */
+.commentEditLine {
   display: flex;
   align-items: flex-start;
+  /* 绘制在焦点行色带之上 */
+  position: relative;
+  z-index: 1;
 }
 
 .commentText {
@@ -1344,34 +1395,38 @@ button {
 
 /* 文本选择高亮与 CodeMirror 编辑器保持一致（同一套选区颜色） */
 .commentInput::selection {
-  background: rgba(95, 145, 220, 0.28);
+  background: rgb(62, 68, 81);
+  color: inherit;
 }
 
 /*
- * 文本块（注释 / 消息）的焦点行：
- * 与普通指令行的焦点高亮同宽同高，从行号列一直横跨到右边缘。
- * 文本块一列多行，因此用一条按行高等高的背景带定位到焦点行。
+ * 注释行内编辑时的焦点行色带：
+ * 整块是一个多行文本域，无法按行上底色，改为一条与行高等高的色带。
+ * 它嵌在内容区里，因此天然不会跨到行号栏。
  */
-.commentBlock > .commandRow,
-.messageBlock > .commandRow {
+.commentContent {
   position: relative;
 }
 
-.blockFocusBand {
+.editFocusBand {
   position: absolute;
   left: 0;
   right: 0;
   top: calc(var(--focus-line) * 1.7em);
   height: 1.7em;
-  background: rgba(95, 145, 220, 0.18);
+  /* 与文本编辑器当前行同色 */
+  background: rgba(102, 153, 255, 0.043);
   pointer-events: none;
 }
 
-/* 行号列与文本绘制在焦点带之上 */
-.commentBlock > .commandRow > *:not(.blockFocusBand),
-.messageBlock > .commandRow > *:not(.blockFocusBand) {
+.commentEditLine {
   position: relative;
   z-index: 1;
+}
+
+/* 划选文字时让位给文本选区 */
+.commandList[data-text-selecting='true'] .editFocusBand {
+  display: none;
 }
 
 /* ── 消息块（10110 + 20110 续行） ─────────────────────── */
@@ -1391,8 +1446,9 @@ button {
 }
 
 .messageLine {
-  display: flex;
-  align-items: flex-start;
+  display: block;
+  /* 文本块按纯文本排版，划选时不会在片段之间插入换行 */
+  white-space: pre;
 }
 
 /* 续行内容与首行冒号之后的内容对齐（用同构前缀占位，不按 ch 估算） */

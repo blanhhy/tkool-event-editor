@@ -1,6 +1,6 @@
-import { type CSSProperties, type MouseEvent } from 'react';
+import { type MouseEvent } from 'react';
 import { stripNewlines, type CommandLine } from '../lib/eventCommands';
-import IndentGuides from './IndentGuides';
+import CommandIndent from './CommandIndent';
 
 interface Props {
   /** 消息块：首行 ShowMessage + 若干 ShowMessage2 续行 */
@@ -28,14 +28,6 @@ export default function MessageBlock({ lines, onSelect, active, focusIndex }: Pr
     .split('\n');
   const firstNumber = lines[0].index + 1;
 
-  /** 焦点行在文本块内的行序号；整块用一条背景带标出，与普通指令行同宽 */
-  const focusLine =
-    focusIndex != null &&
-    focusIndex >= lines[0].index &&
-    focusIndex < lines[0].index + displayLines.length
-      ? focusIndex - lines[0].index
-      : null;
-
   return (
     <div
       className="messageBlock"
@@ -45,15 +37,6 @@ export default function MessageBlock({ lines, onSelect, active, focusIndex }: Pr
       onClick={(event) => onSelect?.(clickedLineIndex(event, lines[0].index))}
     >
       <div className="commandRow">
-        {/* 焦点行：横跨行号列到右边缘，与普通指令行的焦点高亮同宽同高 */}
-        {focusLine !== null && (
-          <div
-            className="blockFocusBand"
-            style={{ '--focus-line': String(focusLine) } as CSSProperties}
-            aria-hidden="true"
-          />
-        )}
-
         <div className="commandIndex messageIndex">
           {displayLines.map((_, index) => (
             <div key={index} data-line-index={lines[0].index + index}>
@@ -62,14 +45,13 @@ export default function MessageBlock({ lines, onSelect, active, focusIndex }: Pr
           ))}
         </div>
 
-        <IndentGuides depth={lines[0].indent} />
-
         <div className="commandContent messageContent">
           <div
             className="messageLine"
             data-line-index={lines[0].index}
             data-focused={focusIndex === lines[0].index ? 'true' : undefined}
           >
+            <CommandIndent depth={lines[0].indent} />
             <span className="commandName">显示文字</span>
             <span className="commandPunct">: </span>
             <span className="messageString">{displayLines[0] || '\u00A0'}</span>
@@ -83,11 +65,10 @@ export default function MessageBlock({ lines, onSelect, active, focusIndex }: Pr
                 focusIndex === lines[0].index + index + 1 ? 'true' : undefined
               }
             >
-              {/* 续行用同构的不可见前缀占位，保证与首行文字左缘严格对齐 */}
-              <span className="commandPrefixSpacer" aria-hidden="true">
-                <span className="commandName">显示文字</span>
-                <span className="commandPunct">: </span>
-              </span>
+              <CommandIndent depth={lines[0].indent} />
+              {/* 续行的左对齐缩进：10 个半角空格 =「显示文字: 」的全角半角宽度，
+                  与首行文字左缘精确对齐，也能像普通文本一样被划选 */}
+              <span className="commandTextSpacer">{'          '}</span>
               <span className="messageString">{text || '\u00A0'}</span>
             </div>
           ))}

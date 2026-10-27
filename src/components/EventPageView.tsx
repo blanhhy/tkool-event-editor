@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from 'react';
 import type { EventCommand } from 'rpgrt';
 import { Cmd } from '../lib/commandCodes';
 import { buildCommandDisplay, type DisplayTone } from '../lib/commandDisplay';
@@ -16,10 +23,10 @@ import {
   type CommandEnvironment,
   type Diagnostic,
 } from '../lib/commandSpec';
+import CommandIndent from './CommandIndent';
 import CommandPicker from './CommandPicker';
 import CommentBlock from './CommentBlock';
 import DiagnosticMark from './DiagnosticMark';
-import IndentGuides from './IndentGuides';
 import InsertButton from './InsertButton';
 import MessageBlock from './MessageBlock';
 
@@ -52,6 +59,8 @@ interface Props {
   onReplaceCommands?: (startIndex: number, deleteCount: number, lines: EventCommand[]) => void;
   /** 删除指定下标的指令（code10 是否参与由选择区规则决定） */
   onDeleteCommands?: (indices: number[]) => void;
+  /** 文本选区恰好覆盖完整指令簇时，把指令 JSON 同步给剪贴板（供之后粘贴） */
+  onCopyCommands?: (json: string) => void;
 }
 
 export default function EventPageView({
@@ -67,6 +76,7 @@ export default function EventPageView({
   onSelectionChange,
   onReplaceCommands,
   onDeleteCommands,
+  onCopyCommands,
 }: Props) {
   /** 打开指令选择弹窗时记录的目标位置；null 表示弹窗关闭 */
   const [insertTarget, setInsertTarget] = useState<Pick<CommandCluster, 'index' | 'indent'> | null>(
@@ -83,6 +93,10 @@ export default function EventPageView({
     extended: boolean;
     top: number;
   } | null>(null);
+  /** 是否有原生文本选区（鼠标划选文字时隐藏块状的簇高亮，只保留浏览器选区） */
+  const [textSelecting, setTextSelecting] = useState(false);
+  /** 自绘的整行选区带（每行一条，避免浏览器分段高亮造成缝隙与叠色） */
+  const [selectionBands, setSelectionBands] = useState<SelectionBand[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
 
   /** 每条指令所属的最小指令簇 */
@@ -191,15 +205,125 @@ export default function EventPageView({
     return result;
   }, [span, commands, isInsideSelectedBlock]);
 
+  /** 一批指令序列化成剪贴板 JSON（与选择区复制共用同一形态） */
+  const commandsJson = useCallback(
+    (indices: number[]): string =>
+      JSON.stringify(
+        indices.map((index) => toCommandPayload(commands[index])),
+        null,
+        2,
+      ),
+    [commands],
+  );
+
   /** 选择区内的指令序列化成剪贴板 JSON */
   const copySelection = useCallback((): string | null => {
     if (!span || selectedIndices.length === 0) return null;
-    return JSON.stringify(
-      selectedIndices.map((index) => toCommandPayload(commands[index])),
-      null,
-      2,
-    );
-  }, [commands, span, selectedIndices]);
+    return commandsJson(selectedIndices);
+  }, [commandsJson, span, selectedIndices]);
+
+  /**
+   * 原生文本选区是否恰好覆盖一组完整的指令簇。
+   * 是则返回涉及的指令下标区间；只要有一行是半选的、或跨进了某个簇的内部，
+   * 就返回 null（此时按描述文本复制）。
+   */
+  const alignedTextSelection = useCallback((): { start: number; end: number } | null => {
+    const list = listRef.current;
+    const current = window.getSelection();
+    if (!list || !current || current.isCollapsed || current.rangeCount === 0) return null;
+
+    const range = current.getRangeAt(0);
+    if (!list.contains(range.startContainer) || !list.contains(range.endContainer)) return null;
+
+    const startLine = boundaryLine(range.startContainer, 'start');
+    const endLine = boundaryLine(range.endContainer, 'end');
+    if (!startLine || !endLine || !list.contains(startLine) || !list.contains(endLine)) return null;
+
+    const start = lineIndexOf(startLine);
+    const end = lineIndexOf(endLine);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) return null;
+
+    // 选区必须从首行文字起点覆盖到末行文字终点；行号与缩进参考线只是装饰
+    const startContent = visibleContentRange(startLine);
+    const endContent = visibleContentRange(endLine);
+    if (!startContent || !endContent) return null;
+    if (range.compareBoundaryPoints(Range.START_TO_START, startContent) > 0) return null;
+    if (range.compareBoundaryPoints(Range.END_TO_END, endContent) < 0) return null;
+
+    // 区间内每一行所在的簇都必须完整落在区间里；
+    // code10 不能单独复制，只有它所在的子代码块被整体选中时才允许
+    for (let index = start; index <= end; index += 1) {
+      const line = commands[index];
+      if (!line) continue;
+      if (line.code === Cmd.End && !isInsideSelectedBlock(index, start, end)) return null;
+
+      const cluster = clusters.get(index);
+      if (!cluster) continue;
+      if (cluster.index < start || cluster.end > end) return null;
+    }
+
+    return { start, end };
+  }, [clusters, commands, isInsideSelectedBlock]);
+
+  // 复制：文本选区对齐到完整指令簇时写指令 JSON，否则交给浏览器复制描述文本
+  useEffect(() => {
+    const onCopy = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const aligned = alignedTextSelection();
+      if (aligned) {
+        const indices: number[] = [];
+        for (let index = aligned.start; index <= aligned.end; index += 1) indices.push(index);
+        const json = commandsJson(indices);
+
+        event.clipboardData?.setData('text/plain', json);
+        event.preventDefault();
+        onCopyCommands?.(json);
+        return;
+      }
+
+      // 未对齐到完整指令簇：复制描述文本，并剔除行号栏
+      const list = listRef.current;
+      const current = window.getSelection();
+      if (!list || !current || current.rangeCount === 0) return;
+      const range = current.getRangeAt(0);
+      const text = selectedText(list, range);
+      if (text === null) return;
+
+      event.clipboardData?.setData('text/plain', text);
+      event.preventDefault();
+    };
+
+    document.addEventListener('copy', onCopy);
+    return () => document.removeEventListener('copy', onCopy);
+  }, [alignedTextSelection, commandsJson, onCopyCommands]);
+
+  // 跟随原生文本选区：隐藏自定义高亮，并自绘等高的整行选区带
+  useEffect(() => {
+    const sync = () => {
+      const list = listRef.current;
+      const current = window.getSelection();
+      const active =
+        !!list &&
+        !!current &&
+        !current.isCollapsed &&
+        current.rangeCount > 0 &&
+        list.contains(current.anchorNode) &&
+        list.contains(current.focusNode);
+
+      setTextSelecting(active);
+      setSelectionBands(active && list && current ? computeSelectionBands(list, current.getRangeAt(0)) : []);
+    };
+
+    document.addEventListener('selectionchange', sync);
+    return () => document.removeEventListener('selectionchange', sync);
+  }, []);
 
   /** 剪切：复制选择区后把它从事件页里删除 */
   const cutSelection = useCallback((): string | null => {
@@ -300,6 +424,9 @@ export default function EventPageView({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'Delete') return;
 
+      // 文本划选中：方向键交给浏览器折叠选区，Delete 不误删指令
+      if (textSelecting) return;
+
       // 焦点在输入框里时不拦截
       const target = event.target as HTMLElement | null;
       if (
@@ -334,7 +461,15 @@ export default function EventPageView({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selection, commands.length, selectRows, span, selectedIndices, onDeleteCommands]);
+  }, [
+    selection,
+    commands.length,
+    selectRows,
+    span,
+    selectedIndices,
+    onDeleteCommands,
+    textSelecting,
+  ]);
 
   // 指令集归属与参数合法性：一条指令可能同时有多条诊断
   const diagnosticsByIndex = useMemo(() => {
@@ -375,7 +510,19 @@ export default function EventPageView({
 
       {/* 空事件页也保留页尾的插入空白行；读取中且尚无内容时不显示 */}
       {!error && (commands.length > 0 || !loading) && (
-        <div className="commandList" role="list" ref={listRef}>
+        <div
+          className="commandList"
+          role="list"
+          ref={listRef}
+          data-text-selecting={textSelecting ? 'true' : undefined}
+        >
+          {/* 自绘选区：整行一条色带，行与行严丝合缝，不做颜色叠加 */}
+          <div className="textSelectionLayer" aria-hidden="true">
+            {selectionBands.map((band, index) => (
+              <div key={index} className="textSelectionRect" style={band} />
+            ))}
+          </div>
+
           {groupCommandLines(commands).map((row) => {
             // 文本块的簇是整块，取首行；闭合符/否则标记的簇落回外层块头
             const first = row.kind === 'command' ? row.line : row.lines[0];
@@ -383,7 +530,12 @@ export default function EventPageView({
             const rowProps = {
               // 点击哪一行，焦点就落在哪一行；选择区仍是该行所属的最小簇
               onSelect: (lineIndex: number) => selectRows(lineIndex, lineIndex, false),
-              active: span !== null && first.index >= span.start && last.index <= span.end,
+              // 只有一行的簇不铺选择色，只留焦点行色
+              active:
+                span !== null &&
+                span.start !== span.end &&
+                first.index >= span.start &&
+                last.index <= span.end,
               // 焦点行单独强调：多行文本块内部按行判断
               focusIndex:
                 selection !== null &&
@@ -423,6 +575,8 @@ export default function EventPageView({
             data-command-index={commands.length}
             data-active={
               selection !== null &&
+              span !== null &&
+              span.start !== span.end &&
               (selection.anchor === commands.length || selection.focus === commands.length)
                 ? 'true'
                 : undefined
@@ -431,6 +585,8 @@ export default function EventPageView({
             onClick={() => selectRows(commands.length, commands.length, false)}
           >
             <span className="commandIndex">{commands.length + 1}</span>
+            {/* 末尾行也留出内容区，使高亮同样不跨越行号栏 */}
+            <div className="commandContent" />
           </div>
 
           {/* 单选时的插入按钮：定位到选择区第一行；多选时不显示，避免加号乱动 */}
@@ -485,12 +641,12 @@ function CommandRow({
       onClick={() => onSelect?.(line.index)}
     >
       <span className="commandIndex">{line.index + 1}</span>
-      <IndentGuides depth={line.indent} />
       <div
         className="commandContent defaultContent"
         data-role={line.role}
         data-unknown={line.unknown ? 'true' : undefined}
       >
+        <CommandIndent depth={line.indent} />
         {isEmptySlot ? (
           <>
             <span className="commandName">@</span>
@@ -562,6 +718,208 @@ function toCommandPayload(line: CommandLine): CommandPayload {
     parameters: line.params,
     ...(line.text !== null ? { string: line.text } : {}),
   };
+}
+
+/** 自绘选区带：相对指令列表内容坐标的矩形 */
+interface SelectionBand {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+/** 文本节点是否属于行号栏（行号栏与文本编辑区完全独立，不参与划选与复制） */
+function isGutterText(text: Text): boolean {
+  return !!text.parentElement?.closest('.commandIndex');
+}
+
+/** 事件页里可参与文本选区的行元素：文本块每行 / 独立指令行 */
+function lineElements(list: HTMLElement): HTMLElement[] {
+  return Array.from(
+    list.querySelectorAll<HTMLElement>('[data-line-index], [data-command-index]'),
+  ).filter(
+    (element) =>
+      !element.closest('.commandIndex') &&
+      !element.querySelector('[data-line-index], [data-command-index]'),
+  );
+}
+
+/**
+ * 把原生文本选区换算成「整行高」的选区带。
+ * 浏览器会把整块行盒与文字片段各画一遍，导致高矮不一、行间有缝、颜色叠加；
+ * 这里只取文字片段的横向范围，纵向统一用行元素的高度，得到与文本编辑器一致的色带。
+ */
+function computeSelectionBands(list: HTMLElement, range: Range): SelectionBand[] {
+  const bands: SelectionBand[] = [];
+  if (!list.contains(range.startContainer) || !list.contains(range.endContainer)) return bands;
+
+  const listRect = list.getBoundingClientRect();
+  const originX = listRect.left - list.scrollLeft;
+  const originY = listRect.top - list.scrollTop;
+  const lines = lineElements(list);
+
+  for (const line of lines) {
+    const lineRange = document.createRange();
+    lineRange.selectNodeContents(line);
+
+    // 与选区不相交的行直接跳过
+    if (range.compareBoundaryPoints(Range.START_TO_END, lineRange) <= 0) continue;
+    if (range.compareBoundaryPoints(Range.END_TO_START, lineRange) >= 0) continue;
+
+    const box = line.getBoundingClientRect();
+    if (box.height <= 0) continue;
+
+    // 只统计文字片段的横向范围，忽略整块行盒产生的整行矩形
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node as Text;
+      if (!text.data || isGutterText(text)) continue;
+
+      const nodeRange = document.createRange();
+      nodeRange.selectNodeContents(text);
+      if (range.compareBoundaryPoints(Range.START_TO_END, nodeRange) <= 0) continue;
+      if (range.compareBoundaryPoints(Range.END_TO_START, nodeRange) >= 0) continue;
+
+      const part = document.createRange();
+      if (range.compareBoundaryPoints(Range.START_TO_START, nodeRange) <= 0) {
+        part.setStart(nodeRange.startContainer, nodeRange.startOffset);
+      } else {
+        part.setStart(range.startContainer, range.startOffset);
+      }
+      if (range.compareBoundaryPoints(Range.END_TO_END, nodeRange) >= 0) {
+        part.setEnd(nodeRange.endContainer, nodeRange.endOffset);
+      } else {
+        part.setEnd(range.endContainer, range.endOffset);
+      }
+      if (part.collapsed) continue;
+
+      for (const rect of Array.from(part.getClientRects())) {
+        if (rect.width <= 0) continue;
+        left = Math.min(left, rect.left);
+        right = Math.max(right, rect.right);
+      }
+    }
+
+    if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left) continue;
+
+    // 取整到整像素：相邻行的上下边界重合，不留下 1px 缝隙或叠色
+    const top = Math.round(box.top - originY);
+    const bottom = Math.round(box.bottom - originY);
+    bands.push({
+      top,
+      left: Math.round(left - originX),
+      width: Math.round(right - left),
+      height: bottom - top,
+    });
+  }
+
+  return bands;
+}
+
+/**
+ * 选区覆盖的纯文本：逐行拼接，行号栏一律剔除。
+ * 这样复制出来的描述文本与编辑器正文一致，不会混入行号。
+ */
+function selectedText(list: HTMLElement, range: Range): string | null {
+  if (!list.contains(range.startContainer) || !list.contains(range.endContainer)) return null;
+
+  const parts: string[] = [];
+  for (const line of lineElements(list)) {
+    const lineRange = document.createRange();
+    lineRange.selectNodeContents(line);
+    if (range.compareBoundaryPoints(Range.START_TO_END, lineRange) <= 0) continue;
+    if (range.compareBoundaryPoints(Range.END_TO_START, lineRange) >= 0) continue;
+
+    let text = '';
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const item = node as Text;
+      if (!item.data || isGutterText(item)) continue;
+
+      const nodeRange = document.createRange();
+      nodeRange.selectNodeContents(item);
+      if (range.compareBoundaryPoints(Range.START_TO_END, nodeRange) <= 0) continue;
+      if (range.compareBoundaryPoints(Range.END_TO_START, nodeRange) >= 0) continue;
+
+      const from =
+        range.compareBoundaryPoints(Range.START_TO_START, nodeRange) <= 0
+          ? 0
+          : range.startOffset;
+      const to =
+        range.compareBoundaryPoints(Range.END_TO_END, nodeRange) >= 0
+          ? item.data.length
+          : range.endOffset;
+      text += item.data.slice(from, to);
+    }
+
+    if (text) parts.push(text);
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * 选区边界所在的行元素。
+ * 边界落在文本块容器上（块首/块尾的空白）时，按方向吸附到块内第一行或最后一行。
+ */
+function boundaryLine(node: Node, direction: 'start' | 'end'): HTMLElement | null {
+  const element =
+    node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement;
+  if (!element) return null;
+
+  const line = element.closest<HTMLElement>('[data-line-index], [data-command-index]');
+  if (!line) return null;
+
+  // 注释 / 消息块容器本身带 data-command-index，真正的行在内部
+  const inner = line.querySelectorAll<HTMLElement>('[data-line-index]');
+  if (inner.length > 0 && !line.hasAttribute('data-line-index')) {
+    return direction === 'start' ? inner[0] : inner[inner.length - 1];
+  }
+  return line;
+}
+
+/** 行元素对应的指令下标 */
+function lineIndexOf(line: HTMLElement): number {
+  return Number(line.dataset.lineIndex ?? line.dataset.commandIndex);
+}
+
+/**
+ * 一行里用户可选的文字范围：
+ * 跳过行号列、缩进参考线与隐藏的续行前缀占位，
+ * 只保留指令名 / 参数 / 注释与消息文字。
+ */
+function visibleContentRange(line: HTMLElement): Range | null {
+  const content = line.querySelector<HTMLElement>(':scope > .commandContent') ?? line;
+  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+  let first: Text | null = null;
+  let last: Text | null = null;
+  let node = walker.nextNode();
+
+  while (node) {
+    const text = node as Text;
+    if (text.data.trim() !== '') {
+      const host = text.parentElement;
+      const hidden =
+        !host ||
+        !!host.closest('[aria-hidden="true"]') ||
+        getComputedStyle(host).visibility === 'hidden' ||
+        getComputedStyle(host).userSelect === 'none';
+      if (!hidden) {
+        if (!first) first = text;
+        last = text;
+      }
+    }
+    node = walker.nextNode();
+  }
+
+  if (!first || !last) return null;
+  const range = document.createRange();
+  range.setStart(first, 0);
+  range.setEnd(last, last.data.length);
+  return range;
 }
 
 /** 解析剪贴板 JSON；结构不合法时返回 null */

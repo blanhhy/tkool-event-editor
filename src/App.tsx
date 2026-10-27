@@ -1137,6 +1137,10 @@ export default function App() {
         event.preventDefault();
         cutEventCommands();
       } else if (key === 'c') {
+        // 已有文本选区时交给浏览器原生复制：
+        // 事件页会在选区恰好覆盖完整指令簇时改写成指令 JSON，否则复制描述文本
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed && selection.rangeCount > 0) return;
         event.preventDefault();
         copyEventCommands();
       } else if (key === 'v') {
@@ -1451,6 +1455,7 @@ export default function App() {
             void replaceEventCommands(tab, startIndex, deleteCount, lines)
           }
           onDeleteCommands={deleteEventCommands}
+          onCopyCommands={storeCommandClipboard}
           commandEnvironment={commandEnvironment}
         />
       </div>

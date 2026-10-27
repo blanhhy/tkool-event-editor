@@ -7,7 +7,7 @@ import {
   type MouseEvent,
 } from 'react';
 import { stripNewlines, type CommandLine } from '../lib/eventCommands';
-import IndentGuides from './IndentGuides';
+import CommandIndent from './CommandIndent';
 
 interface Props {
   /** 注释块：首行 Comment + 若干 Comment2 续行 */
@@ -132,8 +132,11 @@ export default function CommentBlock({
   /** 点中注释文字时进入编辑：光标落在点击处，点在该行文字右侧空白则落到行尾 */
   function startEditing(event: MouseEvent) {
     const target = event.target as HTMLElement;
-    // 命令名、冒号与续行的对齐占位只选中，不进入编辑
-    if (target.closest('.commandName, .commandPunct, .commandPrefixSpacer')) return;
+    // 命令名与冒号只选中，不进入编辑
+    if (target.closest('.commandName, .commandPunct')) return;
+    // 鼠标划选文字时不进入编辑，保留文本选区供复制
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
 
     beforeEditRef.current = value;
     setDraft(value);
@@ -141,20 +144,33 @@ export default function CommentBlock({
     setEditing(true);
   }
 
-  /** 编辑态下点击文本区：焦点行跟随光标所在行 */
-  function caretLineIndex(): number {
+  /**
+   * 编辑态下点击文本区：按鼠标纵坐标换算焦点行。
+   * 不能用 input.selectionStart：点击只是把已有选区收起时，光标移动与
+   * selectionchange 都不一定及时，焦点行会留在上一次划选的位置。
+   */
+  function clickedFocusLine(clientY: number): number {
     const input = inputRef.current;
-    if (!input) return lines[0].index;
-    const before = input.value.slice(0, input.selectionStart);
-    const line = lines[0].index + before.split('\n').length - 1;
+    const first = lines[0].index;
+    const last = lines[lines.length - 1].index;
+    if (!input) return first;
+
+    const rect = input.getBoundingClientRect();
+    const lineHeight =
+      parseFloat(window.getComputedStyle(input).lineHeight) ||
+      rect.height / Math.max(1, displayLines.length);
+    const row = Math.floor((clientY - rect.top + input.scrollTop) / lineHeight);
     // 草稿里新加的行还没有对应的指令，先落到最后一条真实行上
-    return Math.min(line, lines[lines.length - 1].index);
+    return Math.min(first + Math.max(row, 0), last);
   }
 
   const displayLines = (editing ? draft : value).split('\n');
   const firstNumber = lines[0].index + 1;
 
-  /** 焦点行在文本块内的行序号；整块用一条背景带标出，与普通指令行同宽 */
+  /**
+   * 焦点行在文本块内的行序号。
+   * 非编辑态每行自带底色；编辑态整块是一个文本域，用一条色带标出光标所在行。
+   */
   const focusLine =
     focusIndex != null &&
     focusIndex >= lines[0].index &&
@@ -166,31 +182,23 @@ export default function CommentBlock({
   const gutter = displayLines.map((_, index) => firstNumber + index);
 
   return (
+    // 行内编辑时不显示簇选中色：只保留焦点行色带
     <div
       className="commentBlock"
       role="listitem"
       data-command-index={lines[0].index}
-      data-active={active ? 'true' : undefined}
+      data-active={active && !editing ? 'true' : undefined}
       onClick={(event) => {
         const target = event.target as HTMLElement;
-        // 编辑态点文本区时按光标所在行定焦点；点行号仍按点击的行
+        // 编辑态点文本区时按鼠标所在行定焦点；点行号仍按点击的行
         if (editing && !target.closest('[data-line-index]')) {
-          onSelect?.(caretLineIndex());
+          onSelect?.(clickedFocusLine(event.clientY));
           return;
         }
         onSelect?.(clickedLineIndex(event, lines[0].index));
       }}
     >
       <div className="commandRow">
-        {/* 焦点行：横跨行号列到右边缘，与普通指令行的焦点高亮同宽同高 */}
-        {focusLine !== null && (
-          <div
-            className="blockFocusBand"
-            style={{ '--focus-line': String(focusLine) } as CSSProperties}
-            aria-hidden="true"
-          />
-        )}
-
         <div className="commandIndex commentIndex">
           {gutter.map((number, index) => (
             <div key={index} data-line-index={lines[0].index + index}>
@@ -199,11 +207,18 @@ export default function CommentBlock({
           ))}
         </div>
 
-        <IndentGuides depth={lines[0].indent} />
-
         <div className="commandContent commentContent">
+          {/* 编辑态：整块是一个文本域，用一条色带标出光标所在行（只覆盖内容区） */}
+          {editing && focusLine !== null && (
+            <div
+              className="editFocusBand"
+              style={{ '--focus-line': String(focusLine) } as CSSProperties}
+              aria-hidden="true"
+            />
+          )}
           {editing ? (
-            <div className="commentLine" onClick={() => inputRef.current?.focus()}>
+            <div className="commentLine commentEditLine" onClick={() => inputRef.current?.focus()}>
+              <CommandIndent depth={lines[0].indent} />
               <span className="commandName">注释</span>
               <span className="commandPunct">: </span>
               <textarea
@@ -213,6 +228,11 @@ export default function CommentBlock({
                 rows={Math.max(1, displayLines.length)}
                 spellCheck={false}
                 onChange={handleChange}
+                // 划选结束 / 点击收起选区时 click 不一定派发，鼠标松开就同步焦点行
+                onMouseUp={(event) => {
+                  if (event.button !== 0) return;
+                  onSelect?.(clickedFocusLine(event.clientY));
+                }}
                 onBlur={() => stopEditing()}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') {
@@ -258,6 +278,7 @@ export default function CommentBlock({
                 data-line-index={lines[0].index}
                 data-focused={focusIndex === lines[0].index ? 'true' : undefined}
               >
+                <CommandIndent depth={lines[0].indent} />
                 <span className="commandName">注释</span>
                 <span className="commandPunct">: </span>
                 <span className="commentText">{displayLines[0] || '\u00A0'}</span>
@@ -271,11 +292,10 @@ export default function CommentBlock({
                     focusIndex === lines[0].index + index + 1 ? 'true' : undefined
                   }
                 >
-                  {/* 续行用同构的不可见前缀占位，保证与首行文字左缘严格对齐 */}
-                  <span className="commandPrefixSpacer" aria-hidden="true">
-                    <span className="commandName">注释</span>
-                    <span className="commandPunct">: </span>
-                  </span>
+                  <CommandIndent depth={lines[0].indent} />
+                  {/* 续行的左对齐缩进：6 个半角空格 =「注释: 」的全角半角宽度，
+                      与首行文字左缘精确对齐，也能像普通文本一样被划选 */}
+                  <span className="commandTextSpacer">{'      '}</span>
                   <span className="commentText">{text || '\u00A0'}</span>
                 </div>
               ))}
