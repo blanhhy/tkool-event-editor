@@ -16,7 +16,13 @@ import ProjectMenu from './components/ProjectMenu';
 import SidePanelSection from './components/SidePanelSection';
 import type { ContextMenuItem } from './components/ContextMenu';
 import type { TextEditorApi } from './components/TextEditor';
-import { ExplorerIcon, NewFileIcon, NewFolderIcon, RefreshIcon } from './components/icons';
+import {
+  ExplorerIcon,
+  NewFileIcon,
+  NewFolderIcon,
+  RefreshIcon,
+  SearchIcon,
+} from './components/icons';
 import {
   readProjectConfig,
   writeProjectConfig,
@@ -123,6 +129,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sidePanelOpen, setSidePanelOpen] = useState(true);
+  /** 侧栏当前显示的应用：文件 / 搜索 */
+  const [sideView, setSideView] = useState<'files' | 'search'>('files');
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
   const [resizingPanel, setResizingPanel] = useState(false);
   const resizeSessionRef = useRef<{
@@ -130,6 +138,8 @@ export default function App() {
     closedEdgeX: number;
   } | null>(null);
   const [explorerOpen, setExplorerOpen] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [eventsOpen, setEventsOpen] = useState(true);
   const [catalog, setCatalog] = useState<EventCatalog>(emptyCatalog);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -1345,13 +1355,36 @@ export default function App() {
           <button
             type="button"
             className="activityItem"
-            data-active={sidePanelOpen ? 'true' : 'false'}
-            title={sidePanelOpen ? '收起文件树' : '文件树'}
-            aria-label={sidePanelOpen ? '收起文件树' : '文件树'}
-            aria-pressed={sidePanelOpen}
-            onClick={() => setSidePanelOpen((value) => !value)}
+            data-active={sidePanelOpen && sideView === 'files' ? 'true' : 'false'}
+            title="文件"
+            aria-label="文件"
+            aria-pressed={sidePanelOpen && sideView === 'files'}
+            onClick={() => {
+              if (sidePanelOpen && sideView === 'files') setSidePanelOpen(false);
+              else {
+                setSideView('files');
+                setSidePanelOpen(true);
+              }
+            }}
           >
             <ExplorerIcon size={20} />
+          </button>
+          <button
+            type="button"
+            className="activityItem"
+            data-active={sidePanelOpen && sideView === 'search' ? 'true' : 'false'}
+            title="搜索"
+            aria-label="搜索"
+            aria-pressed={sidePanelOpen && sideView === 'search'}
+            onClick={() => {
+              if (sidePanelOpen && sideView === 'search') setSidePanelOpen(false);
+              else {
+                setSideView('search');
+                setSidePanelOpen(true);
+              }
+            }}
+          >
+            <SearchIcon size={20} />
           </button>
         </nav>
 
@@ -1362,85 +1395,107 @@ export default function App() {
           style={{ '--side-panel-w': `${panelWidth}px` } as CSSProperties}
         >
           <div className="sidePanelInner">
-            <SidePanelSection
-              title="资源管理器"
-              open={explorerOpen}
-              onToggle={toggleExplorer}
-              actions={
-                <>
+            {sideView === 'search' ? (
+              <SidePanelSection
+                title="搜索"
+                open={searchOpen}
+                onToggle={() => setSearchOpen((value) => !value)}
+              >
+                <div className="searchPanel">
+                  <input
+                    type="text"
+                    className="searchInput"
+                    value={searchQuery}
+                    spellCheck={false}
+                    placeholder="搜索"
+                    aria-label="搜索"
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                  />
+                </div>
+              </SidePanelSection>
+            ) : (
+              <>
+              <SidePanelSection
+                title="资源管理器"
+                open={explorerOpen}
+                onToggle={toggleExplorer}
+                actions={
+                  <>
+                    <button
+                      type="button"
+                      className="sidePanelAction"
+                      aria-label="新建文件"
+                      title="新建文件"
+                      disabled={!root}
+                      onClick={() => void newTextFile()}
+                    >
+                      <NewFileIcon size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="sidePanelAction"
+                      aria-label="新建文件夹"
+                      title="新建文件夹"
+                      disabled={!root}
+                      onClick={() => void newFolder()}
+                    >
+                      <NewFolderIcon size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="sidePanelAction"
+                      aria-label="刷新"
+                      title="刷新"
+                      disabled={!root}
+                      onClick={refreshTree}
+                    >
+                      <RefreshIcon size={15} />
+                    </button>
+                  </>
+                }
+              >
+                <FileTree
+                  key={root ? projectSeq : 'empty'}
+                  root={root}
+                  selected={selected}
+                  busy={busy}
+                  refreshToken={treeRefreshToken}
+                  actions={treeActions}
+                  onSelect={handleSelect}
+                  onDragStartFile={handleDragStartFile}
+                />
+              </SidePanelSection>
+
+              <SidePanelSection
+                title="事件管理器"
+                open={eventsOpen}
+                onToggle={() => setEventsOpen((value) => !value)}
+                divided
+                actions={
                   <button
                     type="button"
                     className="sidePanelAction"
-                    aria-label="新建文件"
-                    title="新建文件"
-                    disabled={!root}
-                    onClick={() => void newTextFile()}
-                  >
-                    <NewFileIcon size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    className="sidePanelAction"
-                    aria-label="新建文件夹"
-                    title="新建文件夹"
-                    disabled={!root}
-                    onClick={() => void newFolder()}
-                  >
-                    <NewFolderIcon size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    className="sidePanelAction"
-                    aria-label="刷新"
-                    title="刷新"
-                    disabled={!root}
-                    onClick={refreshTree}
+                    aria-label="刷新事件"
+                    title="刷新事件"
+                    disabled={!root || eventsLoading}
+                    onClick={refreshEvents}
                   >
                     <RefreshIcon size={15} />
                   </button>
-                </>
-              }
-            >
-              <FileTree
-                key={root ? projectSeq : 'empty'}
-                root={root}
-                selected={selected}
-                busy={busy}
-                refreshToken={treeRefreshToken}
-                actions={treeActions}
-                onSelect={handleSelect}
-                onDragStartFile={handleDragStartFile}
-              />
-            </SidePanelSection>
-
-            <SidePanelSection
-              title="事件管理器"
-              open={eventsOpen}
-              onToggle={() => setEventsOpen((value) => !value)}
-              divided
-              actions={
-                <button
-                  type="button"
-                  className="sidePanelAction"
-                  aria-label="刷新事件"
-                  title="刷新事件"
-                  disabled={!root || eventsLoading}
-                  onClick={refreshEvents}
-                >
-                  <RefreshIcon size={15} />
-                </button>
-              }
-            >
-              <EventManager
-                catalog={catalog}
-                hasProject={!!root}
-                selected={activeEventPage ? pageKey(activeEventPage.ref) : null}
-                onSelectPage={openEventPage}
-                loading={eventsLoading}
-                progress={eventsProgress}
-                error={eventsError}
-              />
-            </SidePanelSection>
+                }
+              >
+                <EventManager
+                  catalog={catalog}
+                  hasProject={!!root}
+                  selected={activeEventPage ? pageKey(activeEventPage.ref) : null}
+                  onSelectPage={openEventPage}
+                  loading={eventsLoading}
+                  progress={eventsProgress}
+                  error={eventsError}
+                />
+              </SidePanelSection>
+              </>
+            )}
           </div>
         </aside>
 

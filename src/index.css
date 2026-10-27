@@ -43,9 +43,9 @@
 
   --menu-radius: 6px;
 
-  --title-bar-h: 38px;
+  --title-bar-h: 40px;
   --status-bar-h: 24px;
-  --activity-bar-w: 48px;
+  --activity-bar-w: 44px;
   --side-panel-w: 248px;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
@@ -120,8 +120,7 @@ button {
   align-items: center;
   gap: 10px;
   padding: 0 12px;
-  background: var(--color-bg-elev);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
 }
 
 .appLogoSlot {
@@ -526,14 +525,13 @@ button {
   flex-direction: column;
   padding: 6px 0;
   gap: 2px;
-  background: var(--color-bg-subtle);
-  border-right: 1px solid var(--color-border-dim);
+  background: var(--color-bg);
 }
 
 .activityItem {
   position: relative;
   width: 100%;
-  height: 44px;
+  height: 36px;
   display: grid;
   place-items: center;
   border: 0;
@@ -541,12 +539,34 @@ button {
   color: var(--color-text-dim);
 }
 
-.activityItem:hover {
-  color: var(--color-text);
+/* 激活时的圆角矩形气泡背景（保持正方形） */
+.activityItem::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 32px;
+  height: 32px;
+  transform: translate(-50%, -50%);
+  border-radius: var(--menu-radius);
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.activityItem > svg {
+  position: relative;
+}
+
+.activityItem:hover::before {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .activityItem[data-active='true'] {
   color: #ffffff;
+}
+
+.activityItem[data-active='true']::before {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ── 侧边面板（文件树） ───────────────────────────────── */
@@ -554,11 +574,12 @@ button {
 .sidePanel {
   position: relative;
   flex: 0 0 auto;
+  border-radius: var(--menu-radius);
+  margin-right: 2px;
   width: var(--side-panel-w);
   min-height: 0;
   overflow: hidden;
   background: var(--color-bg-subtle);
-  border-right: 1px solid var(--color-border-dim);
   transition:
     width 140ms ease,
     border-right-color 140ms ease;
@@ -614,6 +635,30 @@ button {
   width: var(--side-panel-w);
   height: 100%;
   min-height: 0;
+}
+
+/* 搜索应用：暂时只有一个输入框 */
+.searchPanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 4px 8px 8px;
+}
+
+.searchInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 3px;
+  background: var(--color-editor-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--syntax-function);
 }
 
 /* 侧栏内的栏目：展开时平分剩余高度，折叠后只保留标题行 */
@@ -891,6 +936,8 @@ button {
 .editorArea {
   position: relative;
   flex: 1;
+  border-radius: 6px;
+  margin-left: 2px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -921,12 +968,14 @@ button {
 
 .tabBar {
   flex: 0 0 auto;
-  height: 34px;
+  height: 40px;
   display: flex;
   align-items: stretch;
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--color-bg-subtle);
+  border: 1px solid var(--color-editor-bg);
+  border-radius: var(--menu-radius) var(--menu-radius) 0 0;
   box-shadow: inset 0 -1px 0 var(--color-border-dim);
   scrollbar-width: none;
 }
@@ -2064,8 +2113,7 @@ button {
   align-items: center;
   gap: 14px;
   padding: 0 12px;
-  background: var(--color-bg-elev);
-  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
   font-size: 11.5px;
   color: var(--color-text-muted);
   white-space: nowrap;

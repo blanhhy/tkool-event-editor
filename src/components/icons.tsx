@@ -83,6 +83,27 @@ export function RefreshIcon({ size = 16, className }: IconProps) {
   return <JetBrainsIcon svg={refreshIcon} size={size} className={className} />;
 }
 
+export function SearchIcon({ size = 20, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <circle cx="14.5" cy="10.5" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M18.9 14.9l2.3 2.3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      {/* 左侧三道短横，表示文本；中间一道略短，保证与圆的水平间距一致 */}
+      <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+        <path d="M2.2 6.1h3.9" />
+        <path d="M2.2 10.5h3.2" />
+        <path d="M2.2 14.9h3.9" />
+      </g>
+    </svg>
+  );
+}
+
 export function ExplorerIcon({ size = 20, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden="true">
