@@ -20,6 +20,8 @@ export interface EditorTab {
   kind: EditorTabKind;
   size: number;
   text?: string;
+  /** 上次读取 / 保存时的文本快照，用于判断是否有未保存的修改 */
+  savedText?: string;
   editable?: boolean;
   encoding?: Encoding;
   eol?: 'CRLF' | 'LF';
@@ -167,7 +169,6 @@ export default function EditorArea({
                 <FileTypeIcon name={tab.name} size={14} />
               )}
               <span className="tabLabel">{tab.name}</span>
-              {tab.dirty && <span className="tabDirtyDot" aria-label="未保存" />}
               <button
                 type="button"
                 className="tabClose"
@@ -178,9 +179,10 @@ export default function EditorArea({
                   onClose(tab.path);
                 }}
               >
-                {/* 事件页有未保存的修改时，叉号变成圆圈 */}
-                {tab.kind === 'event' &&
-                !isSameCommands(tab.commands, tab.savedCommands) ? (
+                {/* 有未保存的修改时，叉号变成圆圈（事件页与文件一致） */}
+                {(tab.kind === 'event'
+                  ? !isSameCommands(tab.commands, tab.savedCommands)
+                  : !!tab.dirty) ? (
                   <span className="tabDirtyCircle" aria-label="未保存" />
                 ) : (
                   '×'

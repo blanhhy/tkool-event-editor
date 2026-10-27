@@ -105,6 +105,14 @@ function isUserCancellation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { name?: string }).name === 'AbortError';
 }
 
+/**
+ * 编辑器内部统一用 \n，磁盘上的文件可能还是 \r\n；
+ * 判断“是否改过”时先归一，避免仅仅因为换行符表示不同就永远算 dirty。
+ */
+function normalizeEol(text: string): string {
+  return text.replace(/\r\n/g, '\n');
+}
+
 export default function App() {
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
   const [title, setTitle] = useState<string | null>(null);
@@ -380,6 +388,7 @@ export default function App() {
         if (kind === 'text') {
           const decoded = decodeText(await file.arrayBuffer(), encoding);
           tab.text = decoded.text;
+          tab.savedText = normalizeEol(decoded.text);
           tab.editable = decoded.editable;
           tab.encoding = decoded.encoding;
           tab.eol = decoded.text.includes('\r\n') ? 'CRLF' : 'LF';
@@ -518,7 +527,14 @@ export default function App() {
   );
 
   const handleTabChange = useCallback((path: string, text: string) => {
-    setTabs((prev) => prev.map((tab) => (tab.path === path ? { ...tab, text, dirty: true } : tab)));
+    setTabs((prev) =>
+      prev.map((tab) =>
+        // 内容与读取/保存时的快照一致就不算未保存（与事件页同一规则）
+        tab.path === path
+          ? { ...tab, text, dirty: normalizeEol(text) !== (tab.savedText ?? '') }
+          : tab,
+      ),
+    );
   }, []);
 
   const saveTab = useCallback(
@@ -535,7 +551,13 @@ export default function App() {
         const writable = await handle.createWritable();
         await writable.write(new TextEncoder().encode(tab.text ?? ''));
         await writable.close();
-        setTabs((prev) => prev.map((item) => (item.path === path ? { ...item, dirty: false } : item)));
+        setTabs((prev) =>
+          prev.map((item) =>
+            item.path === path
+              ? { ...item, savedText: normalizeEol(item.text ?? ''), dirty: false }
+              : item,
+          ),
+        );
       } catch (err: unknown) {
         console.error(err);
         setError('保存文件失败。');
@@ -737,6 +759,7 @@ export default function App() {
               ? {
                   ...tab,
                   text: decoded.text,
+                  savedText: normalizeEol(decoded.text),
                   encoding: decoded.encoding,
                   editable: decoded.editable,
                   eol: decoded.text.includes('\r\n') ? ('CRLF' as const) : ('LF' as const),

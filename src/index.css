@@ -975,14 +975,6 @@ button {
   text-overflow: ellipsis;
 }
 
-.tabDirtyDot {
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-primary);
-}
-
 .tabClose {
   flex: 0 0 auto;
   width: 18px;
