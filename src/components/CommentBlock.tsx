@@ -56,6 +56,13 @@ export default function CommentBlock({
   const beforeEditRef = useRef(original);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  /**
+   * 结束编辑时先压住簇高亮：点击别处会先触发失焦（这里恢复高亮），
+   * 紧接着这次点击才把选择切到别的指令，中间会闪一下高亮。
+   * 等焦点行真的变了（点击落地）或短暂超时后再恢复。
+   */
+  const [highlightSuppressed, setHighlightSuppressed] = useState(false);
+  const exitFocusRef = useRef<number | null>(null);
   /** 行内编辑时文本域里选区的自绘轮廓（原生选区无法做圆角） */
   const [editShape, setEditShape] = useState<{
     left: number;
@@ -136,15 +143,36 @@ export default function CommentBlock({
     onSave?.(next);
   }
 
-  /** 退出编辑；revert 时把文本恢复成进入编辑时的内容（Esc） */
-  function stopEditing(revert = false) {
+  /**
+   * 退出编辑；revert 时把文本恢复成进入编辑时的内容（Esc）。
+   * suppressHighlight 用于失焦退出：这次点击可能马上把选择切走，先别恢复簇高亮。
+   */
+  function stopEditing(revert = false, suppressHighlight = false) {
     if (revert && draft !== beforeEditRef.current) {
       setDraft(beforeEditRef.current);
       onSave?.(beforeEditRef.current);
     }
     setEditShape(null);
     setEditing(false);
+    if (suppressHighlight) {
+      exitFocusRef.current = focusIndex ?? null;
+      setHighlightSuppressed(true);
+    }
   }
+
+  // 焦点行变化说明这次点击已经落地，簇高亮按新的选择结果来
+  useEffect(() => {
+    if (!highlightSuppressed) return;
+    if (focusIndex === exitFocusRef.current) return;
+    setHighlightSuppressed(false);
+  }, [focusIndex, highlightSuppressed]);
+
+  // 兜底：点击没有改变选择（例如点了侧栏）时，稍后再恢复高亮
+  useEffect(() => {
+    if (!highlightSuppressed) return;
+    const timer = window.setTimeout(() => setHighlightSuppressed(false), 120);
+    return () => window.clearTimeout(timer);
+  }, [highlightSuppressed]);
 
   /** 点中注释文字时进入编辑：光标落在点击处，点在该行文字右侧空白则落到行尾 */
   function startEditing(event: MouseEvent) {
@@ -204,7 +232,7 @@ export default function CommentBlock({
       className="commentBlock"
       role="listitem"
       data-command-index={lines[0].index}
-      data-active={active && !editing ? 'true' : undefined}
+      data-active={active && !editing && !highlightSuppressed ? 'true' : undefined}
       onClick={(event) => {
         const target = event.target as HTMLElement;
         // 编辑态点文本区时按鼠标所在行定焦点；点行号仍按点击的行
@@ -263,7 +291,7 @@ export default function CommentBlock({
                   onSelect?.(clickedFocusLine(event.clientY));
                   setEditShape(measureTextareaSelection(event.currentTarget, contentRef.current));
                 }}
-                onBlur={() => stopEditing()}
+                onBlur={() => stopEditing(false, true)}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') {
                     stopEditing(true);
