@@ -1,4 +1,4 @@
-import { type MouseEvent } from 'react';
+import { type CSSProperties, type MouseEvent } from 'react';
 import { stripNewlines, type CommandLine } from '../lib/eventCommands';
 import IndentGuides from './IndentGuides';
 
@@ -28,6 +28,14 @@ export default function MessageBlock({ lines, onSelect, active, focusIndex }: Pr
     .split('\n');
   const firstNumber = lines[0].index + 1;
 
+  /** 焦点行在文本块内的行序号；整块用一条背景带标出，与普通指令行同宽 */
+  const focusLine =
+    focusIndex != null &&
+    focusIndex >= lines[0].index &&
+    focusIndex < lines[0].index + displayLines.length
+      ? focusIndex - lines[0].index
+      : null;
+
   return (
     <div
       className="messageBlock"
@@ -37,6 +45,15 @@ export default function MessageBlock({ lines, onSelect, active, focusIndex }: Pr
       onClick={(event) => onSelect?.(clickedLineIndex(event, lines[0].index))}
     >
       <div className="commandRow">
+        {/* 焦点行：横跨行号列到右边缘，与普通指令行的焦点高亮同宽同高 */}
+        {focusLine !== null && (
+          <div
+            className="blockFocusBand"
+            style={{ '--focus-line': String(focusLine) } as CSSProperties}
+            aria-hidden="true"
+          />
+        )}
+
         <div className="commandIndex messageIndex">
           {displayLines.map((_, index) => (
             <div key={index} data-line-index={lines[0].index + index}>

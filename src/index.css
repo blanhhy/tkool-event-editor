@@ -1101,10 +1101,8 @@ button {
   background: rgba(255, 255, 255, 0.03);
 }
 
-/* 焦点行：比选择区更明显的强调 */
-.commandRow[data-focused='true'],
-.messageLine[data-focused='true'],
-.commentLine[data-focused='true'] {
+/* 焦点行：比选择区更明显的强调（文本块用 .blockFocusBand 实现同宽高亮） */
+.commandRow[data-focused='true'] {
   background: rgba(95, 145, 220, 0.18);
 }
 
@@ -1338,6 +1336,33 @@ button {
 /* 文本选择高亮与 CodeMirror 编辑器保持一致（同一套选区颜色） */
 .commentInput::selection {
   background: rgba(95, 145, 220, 0.28);
+}
+
+/*
+ * 文本块（注释 / 消息）的焦点行：
+ * 与普通指令行的焦点高亮同宽同高，从行号列一直横跨到右边缘。
+ * 文本块一列多行，因此用一条按行高等高的背景带定位到焦点行。
+ */
+.commentBlock > .commandRow,
+.messageBlock > .commandRow {
+  position: relative;
+}
+
+.blockFocusBand {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--focus-line) * 1.7em);
+  height: 1.7em;
+  background: rgba(95, 145, 220, 0.18);
+  pointer-events: none;
+}
+
+/* 行号列与文本绘制在焦点带之上 */
+.commentBlock > .commandRow > *:not(.blockFocusBand),
+.messageBlock > .commandRow > *:not(.blockFocusBand) {
+  position: relative;
+  z-index: 1;
 }
 
 /* ── 消息块（10110 + 20110 续行） ─────────────────────── */

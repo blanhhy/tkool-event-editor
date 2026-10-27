@@ -129,8 +129,12 @@ export default function EventPageView({
       list.querySelector<HTMLElement>(`[data-command-index="${focusRow}"]`);
     if (!row) return;
 
-    const top = row.offsetTop;
-    const bottom = top + row.offsetHeight;
+    // 文本块内部的 offsetParent 是块自己的行容器，offsetTop 不能直接用，
+    // 统一按相对滚动容器的实际位置计算
+    const listTop = list.getBoundingClientRect().top;
+    const rowRect = row.getBoundingClientRect();
+    const top = rowRect.top - listTop + list.scrollTop;
+    const bottom = top + rowRect.height;
 
     if (top < list.scrollTop) {
       list.scrollTop = top;
@@ -235,6 +239,7 @@ export default function EventPageView({
               <CommentBlock
                 key={`comment-${row.lines[0].index}`}
                 lines={row.lines}
+                commandCount={commands.length}
                 onSave={(text) => onSaveBlock?.('comment', row.lines, text)}
                 {...rowProps}
               />
