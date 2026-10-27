@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Engine } from '../lib/environment';
 import { Cmd } from '../lib/commandCodes';
 import {
@@ -107,6 +107,39 @@ export default function CommandParamsForm({
     setText(next);
   };
 
+  /**
+   * 显示文字的输入框用事件页字体，并按实际字宽缩放字号：
+   * 一行宽度恰好容纳 64 个半角字符（全角占两格）。
+   */
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    if (code !== Cmd.ShowMessage) return;
+    const element = messageInputRef.current;
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (!element || !ctx) return;
+
+    const family = getComputedStyle(element).fontFamily;
+    // 测量基准：用事件页字号量出 64 个半角的宽度，再按可用宽度等比缩放
+    const baseSize = 12.5;
+    const fit = () => {
+      ctx.font = `${baseSize}px ${family}`;
+      const lineWidth = ctx.measureText('0'.repeat(64)).width;
+      // clientWidth 含左右内边距（6px × 2），不含边框；留 0.5px 余量避免末字被折行
+      const available = element.clientWidth - 12 - 0.5;
+      if (lineWidth <= 0 || available <= 0) return;
+      const size = Math.max(6, (baseSize * available) / lineWidth);
+      element.style.fontSize = `${size.toFixed(2)}px`;
+    };
+
+    fit();
+    // 内置字体加载完成后字宽会变，需要重测一次
+    void document.fonts.ready.then(fit);
+
+    const observer = new ResizeObserver(fit);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [code]);
+
   const setParam = (p: number, rawValue: number, min?: number, max?: number) => {
     setValues((prev) => {
       const next = [...prev];
@@ -145,7 +178,12 @@ export default function CommandParamsForm({
               <ChoiceLines count={spec.text.lines} value={text} onChange={setText} />
             ) : (
               <textarea
-                className="commandTextField"
+                ref={messageInputRef}
+                className={
+                  code === Cmd.ShowMessage
+                    ? 'commandTextField messageTextField'
+                    : 'commandTextField'
+                }
                 rows={spec?.text?.rows ?? 3}
                 value={text}
                 spellCheck={false}

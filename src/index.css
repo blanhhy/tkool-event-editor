@@ -1806,6 +1806,12 @@ button {
   line-height: 1.5;
 }
 
+/* 显示文字的输入框：与事件页同字体，字号由脚本按容器宽度测量后写入 */
+.messageTextField {
+  font-family: var(--font-mono);
+  line-height: 1.7;
+}
+
 .dialogNumber {
   width: 84px;
   flex: 0 0 auto;
