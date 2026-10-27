@@ -2,20 +2,22 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { computeWindowSize, renderMessageWindow, type LoadedImage } from '@mywin/rm200x-renderer';
 import { MESSAGE_LIMITS, splitCommandText, type FaceGraphicState } from '../lib/eventCommands';
 import {
-  buildMessageConfig,
-  loadFaceImage,
-  loadMessageSystemAssets,
+  getMessageAssetProvider,
+  type MessageAssetProvider,
   type MessageFaceAssets,
   type MessageSystemAssets,
-} from '../lib/messagePreview';
+} from '../lib/messageAssets';
+import { buildMessageConfig } from '../lib/messagePreview';
 
 interface Props {
   /** 对话框里正在编辑的文本 */
   text: string;
-  /** 已打开的工程目录，用于读取 System 图 */
+  /** 已打开的工程目录，用于读取工程素材 */
   root: FileSystemDirectoryHandle | null;
   /** 本页上方最近的「更改脸图」指令；null 表示没有脸图 */
   face?: FaceGraphicState | null;
+  /** 素材来源；默认按工程目录 + 内置 RTP 组合，可替换成别家实现 */
+  provider?: MessageAssetProvider;
 }
 
 /**
@@ -23,30 +25,31 @@ interface Props {
  * 按引擎实际规则（4 行 × 64 半角、\c[n] 配色、像素字体、脸图）绘制消息窗口。
  * undefined 表示 System 图仍在加载。
  */
-export default function MessagePreview({ text, root, face }: Props) {
+export default function MessagePreview({ text, root, face, provider: injected }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const provider = useMemo(
+    () => injected ?? getMessageAssetProvider(root),
+    [injected, root],
+  );
   const [assets, setAssets] = useState<MessageSystemAssets | null | undefined>(undefined);
   const [faceImage, setFaceImage] = useState<LoadedImage | null>(null);
   const [faceMissing, setFaceMissing] = useState(false);
 
   useEffect(() => {
-    if (!root) {
-      setAssets(null);
-      return;
-    }
     let cancelled = false;
     setAssets(undefined);
-    void loadMessageSystemAssets(root).then((next) => {
+    provider.ensureExFont();
+    void provider.loadSystem().then((next) => {
       if (!cancelled) setAssets(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [root]);
+  }, [provider]);
 
   const faceName = face?.name ?? null;
   useEffect(() => {
-    if (!root || !faceName) {
+    if (!faceName) {
       setFaceImage(null);
       setFaceMissing(false);
       return;
@@ -54,7 +57,7 @@ export default function MessagePreview({ text, root, face }: Props) {
     let cancelled = false;
     setFaceImage(null);
     setFaceMissing(false);
-    void loadFaceImage(root, faceName).then((image) => {
+    void provider.loadFace(faceName).then((image) => {
       if (cancelled) return;
       setFaceImage(image);
       setFaceMissing(!image);
@@ -62,7 +65,7 @@ export default function MessagePreview({ text, root, face }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [root, faceName]);
+  }, [provider, faceName]);
 
   /** 预览按写回时的换行规则排版，长行折行、超出 4 行的部分不会出现 */
   const previewText = useMemo(
@@ -109,12 +112,10 @@ export default function MessagePreview({ text, root, face }: Props) {
         )}
       </div>
       {assets === null && (
-        <span className="messagePreviewNote">
-          未找到 System/System.png（可能使用 RTP 素材），仅显示文字
-        </span>
+        <span className="messagePreviewNote">缺少 System 图，仅显示文字</span>
       )}
       {faceMissing && faceName && (
-        <span className="messagePreviewNote">未找到 FaceSet/{faceName}.png，未显示脸图</span>
+        <span className="messagePreviewNote">缺少脸图 {faceName}</span>
       )}
     </div>
   );
