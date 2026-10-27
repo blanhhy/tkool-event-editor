@@ -994,6 +994,15 @@ button {
   opacity: 1;
 }
 
+/* 事件页有未保存修改：关闭按钮里的叉号换成圆圈 */
+.tabDirtyCircle {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .tabClose:hover {
   color: var(--color-text);
 }

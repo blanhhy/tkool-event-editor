@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import type { EventCommand } from 'rpgrt';
 import { Cmd } from '../lib/commandCodes';
 import { buildCommandDisplay, type DisplayTone } from '../lib/commandDisplay';
 import {
@@ -20,6 +21,16 @@ import IndentGuides from './IndentGuides';
 import InsertButton from './InsertButton';
 import MessageBlock from './MessageBlock';
 
+/** 事件页的指令操作接口，供编辑菜单与快捷键调用 */
+export interface EventPageApi {
+  /** 复制选择区内的指令，返回 JSON */
+  copy: () => string | null;
+  /** 剪切：复制并删除选择区，返回 JSON */
+  cut: () => string | null;
+  /** 在插入点插入 JSON 指令；解析失败返回 false */
+  paste: (json: string) => boolean;
+}
+
 interface Props {
   title: string;
   commands: CommandLine[];
@@ -31,6 +42,14 @@ interface Props {
   onSaveParameters?: (line: CommandLine, parameters: number[]) => void;
   /** 指令集与参数校验环境；为空时不校验 */
   environment?: CommandEnvironment;
+  /** 指令操作接口（复制 / 剪切 / 粘贴） */
+  apiRef?: MutableRefObject<EventPageApi | null>;
+  /** 选择区变化通知，用于菜单项启用状态 */
+  onSelectionChange?: (hasSelection: boolean) => void;
+  /** 写回一段指令区间：删除 deleteCount 条后插入 lines */
+  onReplaceCommands?: (startIndex: number, deleteCount: number, lines: EventCommand[]) => void;
+  /** 删除指定下标的指令（code10 是否参与由选择区规则决定） */
+  onDeleteCommands?: (indices: number[]) => void;
 }
 
 export default function EventPageView({
@@ -42,6 +61,10 @@ export default function EventPageView({
   // 行内编辑已移除；参数写回留给后续的专用编辑器
   onSaveParameters: _onSaveParameters,
   environment,
+  apiRef,
+  onSelectionChange,
+  onReplaceCommands,
+  onDeleteCommands,
 }: Props) {
   /** 打开指令选择弹窗时记录的目标位置；null 表示弹窗关闭 */
   const [insertTarget, setInsertTarget] = useState<Pick<CommandCluster, 'index' | 'indent'> | null>(
@@ -103,7 +126,11 @@ export default function EventPageView({
       const row = list.querySelector<HTMLElement>(`[data-command-index="${head}"]`);
       if (!row) return;
 
-      const top = row.offsetTop;
+      // 文本块内的行以块容器为 offsetParent，按相对滚动容器的实际位置算
+      const top =
+        row.getBoundingClientRect().top -
+        list.getBoundingClientRect().top +
+        list.scrollTop;
       setSelection((prev) =>
         prev &&
         prev.anchor === anchor &&
@@ -116,6 +143,110 @@ export default function EventPageView({
     },
     [clusters],
   );
+
+  /** 写回完成、指令刷新后要恢复的选择（剪切 / 粘贴用） */
+  const pendingSelection = useRef<{ anchor: number; focus: number } | null>(null);
+
+  useEffect(() => {
+    const pending = pendingSelection.current;
+    if (!pending) return;
+    pendingSelection.current = null;
+    const limit = commands.length;
+    const anchor = Math.min(pending.anchor, limit);
+    const focus = Math.min(pending.focus, limit);
+    selectRows(anchor, focus, anchor !== focus);
+  }, [commands, selectRows]);
+
+  /**
+   * 某行的 code10 是否随它所在的子代码块一起被完整选中。
+   * code10 由编辑器自己维护，只有整块被选中时才允许复制 / 删除。
+   */
+  const isInsideSelectedBlock = useCallback(
+    (index: number, start: number, end: number) => {
+      const parentIndent = (commands[index]?.indent ?? 0) - 1;
+      if (parentIndent < 0) return false;
+
+      for (const cluster of clusters.values()) {
+        if (cluster.indent !== parentIndent) continue;
+        if (cluster.index >= index || cluster.end < index) continue;
+        return cluster.index >= start && cluster.end <= end;
+      }
+      return false;
+    },
+    [commands, clusters],
+  );
+
+  /** 选择区内可复制 / 删除的行；同级的 code10 不参与，除非它所在的子代码块被整体选中 */
+  const selectedIndices = useMemo(() => {
+    if (!span) return [];
+    const result: number[] = [];
+    for (let index = span.start; index <= span.end; index += 1) {
+      const line = commands[index];
+      if (!line) continue;
+      if (line.code === Cmd.End && !isInsideSelectedBlock(index, span.start, span.end)) continue;
+      result.push(index);
+    }
+    return result;
+  }, [span, commands, isInsideSelectedBlock]);
+
+  /** 选择区内的指令序列化成剪贴板 JSON */
+  const copySelection = useCallback((): string | null => {
+    if (!span || selectedIndices.length === 0) return null;
+    return JSON.stringify(
+      selectedIndices.map((index) => toCommandPayload(commands[index])),
+      null,
+      2,
+    );
+  }, [commands, span, selectedIndices]);
+
+  /** 剪切：复制选择区后把它从事件页里删除 */
+  const cutSelection = useCallback((): string | null => {
+    const json = copySelection();
+    if (!json || !span || !onDeleteCommands) return json;
+
+    pendingSelection.current = { anchor: span.start, focus: span.start };
+    onDeleteCommands(selectedIndices);
+    return json;
+  }, [copySelection, span, selectedIndices, onDeleteCommands]);
+
+  /** 粘贴：解析 JSON，在插入点按该处缩进插入 */
+  const pasteSelection = useCallback(
+    (json: string): boolean => {
+      const parsed = parseCommandPayload(json);
+      if (!parsed || !onReplaceCommands) return false;
+
+      // 插入点沿用加号的位置：选择区第一行之前，缩进取该簇的层级
+      const start = span ? span.start : commands.length;
+      const indent = span ? clusters.get(span.start)?.indent ?? 0 : 0;
+      const delta = indent - parsed[0].indent;
+      const lines = parsed.map((item) => ({
+        ...item,
+        indent: Math.max(0, item.indent + delta),
+      }));
+
+      pendingSelection.current = { anchor: start, focus: start + lines.length - 1 };
+      onReplaceCommands(start, 0, lines);
+      return true;
+    },
+    [span, clusters, commands.length, onReplaceCommands],
+  );
+
+  // 暴露给编辑菜单与快捷键
+  useEffect(() => {
+    if (!apiRef) return;
+    apiRef.current = { copy: copySelection, cut: cutSelection, paste: pasteSelection };
+  });
+
+  useEffect(() => {
+    if (!apiRef) return;
+    return () => {
+      apiRef.current = null;
+    };
+  }, [apiRef]);
+
+  useEffect(() => {
+    onSelectionChange?.(span !== null);
+  }, [span, onSelectionChange]);
 
   // 焦点行滚出可视区时自动滚动，保证键盘导航时焦点行始终可见
   const focusRow = selection?.focus ?? null;
@@ -148,7 +279,7 @@ export default function EventPageView({
     if (!selection) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'Delete') return;
 
       // 焦点在输入框里时不拦截
       const target = event.target as HTMLElement | null;
@@ -156,6 +287,14 @@ export default function EventPageView({
         target &&
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
       ) {
+        return;
+      }
+
+      if (event.key === 'Delete') {
+        if (!onDeleteCommands || !span || selectedIndices.length === 0) return;
+        event.preventDefault();
+        pendingSelection.current = { anchor: span.start, focus: span.start };
+        onDeleteCommands(selectedIndices);
         return;
       }
 
@@ -176,7 +315,7 @@ export default function EventPageView({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selection, commands.length, selectRows]);
+  }, [selection, commands.length, selectRows, span, selectedIndices, onDeleteCommands]);
 
   // 指令集归属与参数合法性：一条指令可能同时有多条诊断
   const diagnosticsByIndex = useMemo(() => {
@@ -386,4 +525,48 @@ function summarize(diagnosticsByIndex: Map<number, Diagnostic[]>): string {
         `第 ${index + 1} 条：${list.map((item) => item.message).join('；')}`,
     )
     .join('\n');
+}
+
+/** 指令在剪贴板里的 JSON 形态 */
+interface CommandPayload {
+  code: number;
+  indent: number;
+  parameters: number[];
+  string?: string;
+}
+
+function toCommandPayload(line: CommandLine): CommandPayload {
+  return {
+    code: line.code,
+    indent: line.indent,
+    parameters: line.params,
+    ...(line.text !== null ? { string: line.text } : {}),
+  };
+}
+
+/** 解析剪贴板 JSON；结构不合法时返回 null */
+function parseCommandPayload(json: string): EventCommand[] | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(value) || value.length === 0) return null;
+
+  const result: EventCommand[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return null;
+    const record = item as Partial<CommandPayload>;
+    if (typeof record.code !== 'number') return null;
+    result.push({
+      code: record.code,
+      indent: typeof record.indent === 'number' ? record.indent : 0,
+      parameters: Array.isArray(record.parameters)
+        ? record.parameters.filter((value) => typeof value === 'number')
+        : [],
+      string: typeof record.string === 'string' ? record.string : '',
+    });
+  }
+  return result;
 }

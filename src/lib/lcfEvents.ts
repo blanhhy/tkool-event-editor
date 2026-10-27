@@ -1,5 +1,4 @@
 import type { Database, Event as RpgEvent, EventCommand, MapUnit } from 'rpgrt';
-import { Cmd, type CmdCode } from './commandCodes';
 import { detectRuntime, type Engine, type Runtime } from './environment';
 import type { EventCatalog, EventObject, EventPageRef } from './events';
 import { iteratorOf } from './fs';
@@ -486,21 +485,16 @@ async function writeBytes(
   return (await handle.getFile()).lastModified;
 }
 
-export interface CommandParametersUpdate {
-  /** 指令在事件页指令数组中的下标 */
-  index: number;
-  parameters: number[];
-}
-
 /**
- * 写回单条指令的参数（如等待指令的模式与时长），返回修改后的整页指令数组。
+ * 把整页指令写回 LDB。
+ * 事件编辑全部在内存里进行，只有保存时才落盘。
  */
-export async function saveCommandParameters(
+export async function saveEventCommands(
   root: FileSystemDirectoryHandle,
   encoding: Encoding,
   ref: EventPageRef,
-  update: CommandParametersUpdate,
-): Promise<EventCommand[]> {
+  commands: EventCommand[],
+): Promise<void> {
   const { codec, encoding: encodingModule } = await getRpgrt();
   const state = getSession(root, encoding);
   const transcoder = buildTranscoder(encodingModule, encoding);
@@ -508,97 +502,6 @@ export async function saveCommandParameters(
   if (!transcoder) throw new Error('当前编码不可用，无法写回；请检查工程编码设置');
 
   const target = await resolveEventCommands(state, codec, transcoder, ref);
-  const { commands } = target;
-  const command = commands[update.index];
-  if (!command) throw new Error('指令位置无效，事件页内容可能已变化');
-
-  command.parameters = update.parameters;
+  target.commands.splice(0, target.commands.length, ...commands);
   await target.write();
-
-  return commands;
-}
-
-export interface TextBlockUpdate {
-  /** 文本块首条指令（Comment / ShowMessage）在事件页指令数组中的下标 */
-  startIndex: number;
-  /** 文本块末条指令（最后一条续行）的下标 */
-  endIndex: number;
-  /** 已按宽度与行数限制拆好的行；一行对应一条指令 */
-  lines: string[];
-}
-
-/** 文本块的存储形态：首行指令码 + 续行指令码 */
-interface TextBlockCodes {
-  first: CmdCode;
-  continuation: CmdCode;
-}
-
-const COMMENT_CODES: TextBlockCodes = { first: Cmd.Comment, continuation: Cmd.Comment2 };
-const MESSAGE_CODES: TextBlockCodes = { first: Cmd.ShowMessage, continuation: Cmd.ShowMessage2 };
-
-/**
- * 写回注释块：把 [startIndex, endIndex] 替换为新的 Comment + Comment2 指令序列。
- * 行数可以增加或减少，返回值是修改后的整页指令数组。
- */
-export async function saveCommentBlock(
-  root: FileSystemDirectoryHandle,
-  encoding: Encoding,
-  ref: EventPageRef,
-  update: TextBlockUpdate,
-): Promise<EventCommand[]> {
-  return saveTextBlock(root, encoding, ref, update, COMMENT_CODES);
-}
-
-/**
- * 写回消息块：把 [startIndex, endIndex] 替换为新的 ShowMessage + ShowMessage2 指令序列。
- */
-export async function saveMessageBlock(
-  root: FileSystemDirectoryHandle,
-  encoding: Encoding,
-  ref: EventPageRef,
-  update: TextBlockUpdate,
-): Promise<EventCommand[]> {
-  return saveTextBlock(root, encoding, ref, update, MESSAGE_CODES);
-}
-
-async function saveTextBlock(
-  root: FileSystemDirectoryHandle,
-  encoding: Encoding,
-  ref: EventPageRef,
-  update: TextBlockUpdate,
-  codes: TextBlockCodes,
-): Promise<EventCommand[]> {
-  const { codec, encoding: encodingModule } = await getRpgrt();
-  const state = getSession(root, encoding);
-  const transcoder = buildTranscoder(encodingModule, encoding);
-
-  if (!transcoder) throw new Error('当前编码不可用，无法写回；请检查工程编码设置');
-
-  const target = await resolveEventCommands(state, codec, transcoder, ref);
-  const { commands } = target;
-
-  if (
-    update.startIndex < 0 ||
-    update.endIndex < update.startIndex ||
-    update.endIndex >= commands.length
-  ) {
-    throw new Error('文本块位置无效，事件页内容可能已变化');
-  }
-
-  const first = commands[update.startIndex];
-  const indent = first?.indent ?? 0;
-  // 首行的其它参数属于该指令本身（如消息的位置设置），换行时保留
-  const parameters = first?.parameters ?? [];
-
-  const replacement: EventCommand[] = update.lines.map((text, index) => ({
-    code: index === 0 ? codes.first : codes.continuation,
-    indent,
-    string: text,
-    parameters: index === 0 ? parameters : [],
-  }));
-
-  commands.splice(update.startIndex, update.endIndex - update.startIndex + 1, ...replacement);
-  await target.write();
-
-  return commands;
 }

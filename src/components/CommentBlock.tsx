@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import {
-  COMMENT_LIMITS,
-  splitCommandText,
-  stripNewlines,
-  type CommandLine,
-} from '../lib/eventCommands';
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type MouseEvent,
+} from 'react';
+import { stripNewlines, type CommandLine } from '../lib/eventCommands';
 import IndentGuides from './IndentGuides';
 
 interface Props {
@@ -44,13 +46,14 @@ export default function CommentBlock({
   const [editing, setEditing] = useState(false);
   /** 进入编辑时的初始光标位置（整段文本中的偏移） */
   const [caret, setCaret] = useState(0);
+  /** 进入编辑时的文本，Esc 时用它撤销这次编辑 */
+  const beforeEditRef = useRef(original);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // 切换事件页或重新加载时同步外部内容
+  // 外部内容变化（切换事件页 / 刷新 / 内存写回）时同步；编辑中不打断输入
   useEffect(() => {
     setValue(original);
     setDraft(original);
-    setEditing(false);
   }, [original]);
 
   useEffect(() => {
@@ -100,6 +103,7 @@ export default function CommentBlock({
       let offset = 0;
       for (let index = 0; index < line; index += 1) offset += texts[index].length + 1;
       event.preventDefault();
+      beforeEditRef.current = value;
       setDraft(value);
       setCaret(offset + texts[line].length);
       setEditing(true);
@@ -109,15 +113,20 @@ export default function CommentBlock({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [editing, focusIndex, lines, value]);
 
-  function commit() {
+  /** 输入即写回内存（保存时才落盘），没有单独的“提交”动作 */
+  function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    const next = event.target.value;
+    setDraft(next);
+    onSave?.(next);
+  }
+
+  /** 退出编辑；revert 时把文本恢复成进入编辑时的内容（Esc） */
+  function stopEditing(revert = false) {
+    if (revert && draft !== beforeEditRef.current) {
+      setDraft(beforeEditRef.current);
+      onSave?.(beforeEditRef.current);
+    }
     setEditing(false);
-    // 没改动就不写回，避免只移动一下焦点也重写数据文件
-    if (draft === value) return;
-    // 数据库里每行单独存储，换行会变成额外的续行指令。
-    // 注释没有行列限制（2000 编辑器那套只是软限制），因此只按换行拆分。
-    const nextLines = splitCommandText(draft, COMMENT_LIMITS);
-    setValue(nextLines.join('\n'));
-    onSave?.(draft);
   }
 
   /** 点中注释文字时进入编辑：光标落在点击处，点在该行文字右侧空白则落到行尾 */
@@ -126,6 +135,7 @@ export default function CommentBlock({
     // 命令名、冒号与续行的对齐占位只选中，不进入编辑
     if (target.closest('.commandName, .commandPunct, .commandPrefixSpacer')) return;
 
+    beforeEditRef.current = value;
     setDraft(value);
     setCaret(caretOffset(event, value.split('\n'), lines[0].index));
     setEditing(true);
@@ -202,12 +212,11 @@ export default function CommentBlock({
                 value={draft}
                 rows={Math.max(1, displayLines.length)}
                 spellCheck={false}
-                onChange={(event) => setDraft(event.target.value)}
-                onBlur={commit}
+                onChange={handleChange}
+                onBlur={() => stopEditing()}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') {
-                    setDraft(value);
-                    setEditing(false);
+                    stopEditing(true);
                     return;
                   }
                   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
@@ -227,7 +236,7 @@ export default function CommentBlock({
                     const next = lines[lines.length - 1].index + 1;
                     if (next >= commandCount) return;
                     event.preventDefault();
-                    commit();
+                    stopEditing();
                     onSelect?.(next);
                     return;
                   }
@@ -237,7 +246,7 @@ export default function CommentBlock({
                   const prev = lines[0].index - 1;
                   if (prev < 0) return;
                   event.preventDefault();
-                  commit();
+                  stopEditing();
                   onSelect?.(prev);
                 }}
               />

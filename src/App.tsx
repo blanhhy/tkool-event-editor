@@ -52,8 +52,8 @@ import {
   type EventPageRef,
 } from './lib/events';
 import {
-  buildCommandLines,
   COMMENT_LIMITS,
+  isSameCommands,
   MESSAGE_LIMITS,
   splitCommandText,
   type CommandLine,
@@ -63,9 +63,7 @@ import {
   invalidateEventCache,
   loadEventCatalog,
   loadEventPageCommands,
-  saveCommandParameters,
-  saveCommentBlock,
-  saveMessageBlock,
+  saveEventCommands,
   setPreferredEngine,
   type EventCatalogResult,
   type EventLoadProgress,
@@ -74,6 +72,9 @@ import { saveRecentProject, type RecentProject } from './lib/recent';
 import { INDENT_COLORS, SYNTAX_COLORS } from './lib/codeTheme';
 import { type CommandEnvironment } from './lib/commandSpec';
 import type { Engine, Runtime } from './lib/environment';
+import type { EventCommand } from 'rpgrt';
+import type { EventPageApi } from './components/EventPageView';
+import { Cmd } from './lib/commandCodes';
 
 const DEFAULT_PANEL_WIDTH = 248;
 const MIN_PANEL_WIDTH = 180;
@@ -138,6 +139,12 @@ export default function App() {
   const activationRef = useRef(0);
   const dragSourceRef = useRef<{ path: string; entry: DirEntry } | null>(null);
   const editorApiRef = useRef<TextEditorApi | null>(null);
+  /** 事件页的指令操作接口（复制 / 剪切 / 粘贴） */
+  const eventApiRef = useRef<EventPageApi | null>(null);
+  /** 事件页当前是否有选择区（决定剪切 / 复制是否可用） */
+  const [eventHasSelection, setEventHasSelection] = useState(false);
+  /** 事件指令剪贴板：复制出来的 JSON */
+  const [commandClipboard, setCommandClipboard] = useState<string | null>(null);
 
   const closeAllTabs = useCallback(() => {
     tabs.forEach((tab) => {
@@ -418,7 +425,7 @@ export default function App() {
           setTabs((prev) =>
             prev.map((item) =>
               item.path === path
-                ? { ...item, commands: buildCommandLines(commands), eventLoading: false }
+                ? { ...item, commands, savedCommands: commands, eventLoading: false }
                 : item,
             ),
           );
@@ -537,45 +544,126 @@ export default function App() {
     [tabs, root],
   );
 
-  /** 写回注释块 / 消息块，并用返回的整页指令刷新标签 */
-  const saveEventTextBlock = useCallback(
-    async (tab: EditorTab, kind: TextBlockKind, lines: CommandLine[], text: string) => {
-      if (!root || !tab.eventPage || lines.length === 0) return;
+  /** 事件页的改动只写内存，保存时才落盘；每次改动都压入撤销栈 */
+  const updateEventCommands = useCallback((path: string, commands: EventCommand[]) => {
+    setTabs((prev) =>
+      prev.map((item) => {
+        if (item.path !== path || item.commands === commands) return item;
+        const undo = item.commands
+          ? [...(item.undo ?? []), item.commands].slice(-100)
+          : item.undo;
+        return { ...item, commands, undo, redo: [] };
+      }),
+    );
+  }, []);
 
-      try {
-        if (!(await ensureWritePermission(root))) {
-          setError('无法保存：没有获得写入权限。');
-          return;
-        }
+  /** 删除选择区内的指令（code10 已由选择区规则过滤） */
+  const deleteEventCommands = useCallback(
+    (tab: EditorTab, indices: number[]) => {
+      if (!tab.commands || indices.length === 0) return;
+      const drop = new Set(indices);
+      updateEventCommands(
+        tab.path,
+        tab.commands.filter((_, index) => !drop.has(index)),
+      );
+    },
+    [updateEventCommands],
+  );
 
-        const update = {
-          startIndex: lines[0].index,
-          endIndex: lines[lines.length - 1].index,
-          lines: splitCommandText(text, kind === 'comment' ? COMMENT_LIMITS : MESSAGE_LIMITS),
+  /** 撤销 / 重做事件编辑 */
+  const undoEventPage = useCallback((tab: EditorTab) => {
+    setTabs((prev) =>
+      prev.map((item) => {
+        const undo = item.undo ?? [];
+        if (item.path !== tab.path || !item.commands || undo.length === 0) return item;
+        return {
+          ...item,
+          commands: undo[undo.length - 1],
+          undo: undo.slice(0, -1),
+          redo: [...(item.redo ?? []), item.commands],
         };
-        const commands =
-          kind === 'comment'
-            ? await saveCommentBlock(root, encoding, tab.eventPage, update)
-            : await saveMessageBlock(root, encoding, tab.eventPage, update);
+      }),
+    );
+  }, []);
 
-        setTabs((prev) =>
-          prev.map((item) =>
-            item.path === tab.path ? { ...item, commands: buildCommandLines(commands) } : item,
-          ),
-        );
-      } catch (err: unknown) {
-        console.error(err);
-        const label = kind === 'comment' ? '注释' : '消息';
-        setError(err instanceof Error ? `保存${label}失败：${err.message}` : `保存${label}失败。`);
-      }
+  const redoEventPage = useCallback((tab: EditorTab) => {
+    setTabs((prev) =>
+      prev.map((item) => {
+        const redo = item.redo ?? [];
+        if (item.path !== tab.path || !item.commands || redo.length === 0) return item;
+        return {
+          ...item,
+          commands: redo[redo.length - 1],
+          redo: redo.slice(0, -1),
+          undo: [...(item.undo ?? []), item.commands],
+        };
+      }),
+    );
+  }, []);
+
+  /** 注释 / 消息块的编辑：只更新内存中的指令 */
+  const saveEventTextBlock = useCallback(
+    (tab: EditorTab, kind: TextBlockKind, lines: CommandLine[], text: string) => {
+      if (!tab.commands || lines.length === 0) return;
+
+      const first = lines[0];
+      const last = lines[lines.length - 1];
+      const codes =
+        kind === 'comment'
+          ? { first: Cmd.Comment, continuation: Cmd.Comment2 }
+          : { first: Cmd.ShowMessage, continuation: Cmd.ShowMessage2 };
+
+      const replacement: EventCommand[] = splitCommandText(
+        text,
+        kind === 'comment' ? COMMENT_LIMITS : MESSAGE_LIMITS,
+      ).map((lineText, index) => ({
+        code: index === 0 ? codes.first : codes.continuation,
+        indent: first.indent,
+        // 首行的其它参数属于该指令本身（如消息的位置设置），换行时保留
+        parameters: index === 0 ? first.params : [],
+        string: lineText,
+      }));
+
+      updateEventCommands(tab.path, [
+        ...tab.commands.slice(0, first.index),
+        ...replacement,
+        ...tab.commands.slice(last.index + 1),
+      ]);
     },
-    [root, encoding],
+    [updateEventCommands],
   );
 
-  /** 写回单条指令的参数（如等待指令的模式与时长） */
+  /** 修改单条指令的参数：只改内存 */
   const saveEventParameters = useCallback(
-    async (tab: EditorTab, line: CommandLine, parameters: number[]) => {
-      if (!root || !tab.eventPage) return;
+    (tab: EditorTab, line: CommandLine, parameters: number[]) => {
+      if (!tab.commands) return;
+      updateEventCommands(
+        tab.path,
+        tab.commands.map((item, index) =>
+          index === line.index ? { ...item, parameters } : item,
+        ),
+      );
+    },
+    [updateEventCommands],
+  );
+
+  /** 剪切 / 粘贴的区间改动：只改内存 */
+  const replaceEventCommands = useCallback(
+    (tab: EditorTab, startIndex: number, deleteCount: number, lines: EventCommand[]) => {
+      if (!tab.commands) return;
+      updateEventCommands(tab.path, [
+        ...tab.commands.slice(0, startIndex),
+        ...lines,
+        ...tab.commands.slice(startIndex + deleteCount),
+      ]);
+    },
+    [updateEventCommands],
+  );
+
+  /** 保存事件页：把内存里的整页指令写回 LDB */
+  const saveEventPage = useCallback(
+    async (tab: EditorTab) => {
+      if (!root || !tab.eventPage || !tab.commands) return;
 
       try {
         if (!(await ensureWritePermission(root))) {
@@ -583,22 +671,39 @@ export default function App() {
           return;
         }
 
-        const commands = await saveCommandParameters(root, encoding, tab.eventPage, {
-          index: line.index,
-          parameters,
-        });
+        const commands = tab.commands;
+        await saveEventCommands(root, encoding, tab.eventPage, commands);
         setTabs((prev) =>
-          prev.map((item) =>
-            item.path === tab.path ? { ...item, commands: buildCommandLines(commands) } : item,
-          ),
+          prev.map((item) => (item.path === tab.path ? { ...item, savedCommands: commands } : item)),
         );
       } catch (err: unknown) {
         console.error(err);
-        setError(err instanceof Error ? `保存参数失败：${err.message}` : '保存参数失败。');
+        setError(err instanceof Error ? `保存事件页失败：${err.message}` : '保存事件页失败。');
       }
     },
     [root, encoding],
   );
+
+  /** 复制 / 剪切：内容同时写进系统剪贴板，便于在别的工具里粘贴 */
+  const storeCommandClipboard = useCallback((json: string) => {
+    setCommandClipboard(json);
+    void navigator.clipboard?.writeText(json).catch(() => undefined);
+  }, []);
+
+  const copyEventCommands = useCallback(() => {
+    const json = eventApiRef.current?.copy();
+    if (json) storeCommandClipboard(json);
+  }, [storeCommandClipboard]);
+
+  const cutEventCommands = useCallback(() => {
+    const json = eventApiRef.current?.cut();
+    if (json) storeCommandClipboard(json);
+  }, [storeCommandClipboard]);
+
+  const pasteEventCommands = useCallback(() => {
+    if (!commandClipboard) return;
+    eventApiRef.current?.paste(commandClipboard);
+  }, [commandClipboard]);
 
   const activeTabData = tabs.find((tab) => tab.path === activeTab) ?? null;
   const activeTypeLabel = activeTabData
@@ -606,6 +711,14 @@ export default function App() {
       ? '事件页'
       : extensionOf(activeTabData.name).toUpperCase() || kindLabel(activeTabData.kind)
     : '';
+
+  const undoEventCommands = useCallback(() => {
+    if (activeTabData) undoEventPage(activeTabData);
+  }, [activeTabData, undoEventPage]);
+
+  const redoEventCommands = useCallback(() => {
+    if (activeTabData) redoEventPage(activeTabData);
+  }, [activeTabData, redoEventPage]);
 
   const changeTabEncoding = useCallback(
     async (next: Encoding) => {
@@ -871,8 +984,11 @@ export default function App() {
   const saveAll = useCallback(async () => {
     for (const tab of tabs) {
       if (tab.kind === 'text' && tab.editable && tab.dirty) await saveTab(tab.path);
+      else if (tab.kind === 'event' && !isSameCommands(tab.commands, tab.savedCommands)) {
+        await saveEventPage(tab);
+      }
     }
-  }, [tabs, saveTab]);
+  }, [tabs, saveTab, saveEventPage]);
 
   const toggleExplorer = useCallback(() => {
     const next = !explorerOpen;
@@ -934,7 +1050,111 @@ export default function App() {
   }, [resizingPanel]);
 
   const canEditActive = activeTabData?.kind === 'text' && !!activeTabData.editable;
-  const hasDirtyText = tabs.some((tab) => tab.kind === 'text' && tab.editable && tab.dirty);
+  /** 事件页是否有未保存修改：按内容与快照比较，改回原样会自动消失 */
+  const eventDirty =
+    activeTabData?.kind === 'event'
+      ? !isSameCommands(activeTabData.commands, activeTabData.savedCommands)
+      : false;
+  const hasDirtyTabs = tabs.some(
+    (tab) =>
+      (tab.kind === 'text' && tab.editable && tab.dirty) ||
+      (tab.kind === 'event' && !isSameCommands(tab.commands, tab.savedCommands)),
+  );
+  /** 当前是否在事件页：复制 / 剪切 / 粘贴改为作用于指令 */
+  const isEventTab = activeTabData?.kind === 'event';
+  const canUndoEvent = isEventTab && (activeTabData?.undo?.length ?? 0) > 0;
+  const canRedoEvent = isEventTab && (activeTabData?.redo?.length ?? 0) > 0;
+  /** 保存当前标签：文本文件走文件写回，事件页把内存指令写回 LDB */
+  const canSaveActive = isEventTab ? eventDirty : canEditActive;
+
+  const saveActiveTab = useCallback(() => {
+    if (!activeTabData) return;
+    if (activeTabData.kind === 'event') {
+      if (eventDirty) void saveEventPage(activeTabData);
+      return;
+    }
+    if (activeTabData.kind === 'text' && activeTabData.editable && activeTabData.dirty) {
+      void saveTab(activeTabData.path);
+    }
+  }, [activeTabData, eventDirty, saveEventPage, saveTab]);
+
+  const saveActiveRef = useRef(saveActiveTab);
+  useEffect(() => {
+    saveActiveRef.current = saveActiveTab;
+  }, [saveActiveTab]);
+
+  // 事件页的 Ctrl+S：先让注释编辑中的草稿落到内存，再保存
+  useEffect(() => {
+    if (!isEventTab) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      if (event.key.toLowerCase() !== 's') return;
+
+      event.preventDefault();
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) {
+        target.blur();
+        window.setTimeout(() => saveActiveRef.current(), 0);
+        return;
+      }
+      saveActiveRef.current();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isEventTab]);
+
+  // 事件页的复制 / 剪切 / 粘贴 / 撤销 / 重做快捷键；输入框内保留浏览器原生行为
+  useEffect(() => {
+    if (!isEventTab) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redoEventCommands();
+        else undoEventCommands();
+        return;
+      }
+      if (key === 'y') {
+        event.preventDefault();
+        redoEventCommands();
+        return;
+      }
+      if (event.shiftKey) return;
+
+      if (key === 'x') {
+        event.preventDefault();
+        cutEventCommands();
+      } else if (key === 'c') {
+        event.preventDefault();
+        copyEventCommands();
+      } else if (key === 'v') {
+        event.preventDefault();
+        pasteEventCommands();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    isEventTab,
+    cutEventCommands,
+    copyEventCommands,
+    pasteEventCommands,
+    undoEventCommands,
+    redoEventCommands,
+  ]);
 
   /**
    * 事件指令的校验环境：引擎与运行环境决定指令集归属，
@@ -998,10 +1218,8 @@ export default function App() {
       label: '保存',
       shortcut: 'Ctrl+S',
       separatorBefore: true,
-      disabled: !canEditActive,
-      onSelect: () => {
-        if (activeTabData) void saveTab(activeTabData.path);
-      },
+      disabled: !canSaveActive,
+      onSelect: saveActiveTab,
     },
     {
       id: 'save-as',
@@ -1012,7 +1230,7 @@ export default function App() {
     {
       id: 'save-all',
       label: '全部保存',
-      disabled: !hasDirtyText,
+      disabled: !hasDirtyTabs,
       onSelect: () => void saveAll(),
     },
   ];
@@ -1022,37 +1240,52 @@ export default function App() {
       id: 'undo',
       label: '撤销',
       shortcut: 'Ctrl+Z',
-      disabled: !canEditActive,
-      onSelect: () => editorApiRef.current?.undo(),
+      disabled: isEventTab ? !canUndoEvent : !canEditActive,
+      onSelect: () => {
+        if (isEventTab) undoEventCommands();
+        else editorApiRef.current?.undo();
+      },
     },
     {
       id: 'redo',
       label: '重做',
       shortcut: 'Ctrl+Y',
-      disabled: !canEditActive,
-      onSelect: () => editorApiRef.current?.redo(),
+      disabled: isEventTab ? !canRedoEvent : !canEditActive,
+      onSelect: () => {
+        if (isEventTab) redoEventCommands();
+        else editorApiRef.current?.redo();
+      },
     },
     {
       id: 'cut',
       label: '剪切',
       shortcut: 'Ctrl+X',
       separatorBefore: true,
-      disabled: !canEditActive,
-      onSelect: () => editorApiRef.current?.cut(),
+      disabled: isEventTab ? !eventHasSelection : !canEditActive,
+      onSelect: () => {
+        if (isEventTab) cutEventCommands();
+        else editorApiRef.current?.cut();
+      },
     },
     {
       id: 'copy',
       label: '复制',
       shortcut: 'Ctrl+C',
-      disabled: activeTabData?.kind !== 'text',
-      onSelect: () => editorApiRef.current?.copy(),
+      disabled: isEventTab ? !eventHasSelection : activeTabData?.kind !== 'text',
+      onSelect: () => {
+        if (isEventTab) copyEventCommands();
+        else editorApiRef.current?.copy();
+      },
     },
     {
       id: 'paste',
       label: '粘贴',
       shortcut: 'Ctrl+V',
-      disabled: !canEditActive,
-      onSelect: () => editorApiRef.current?.paste(),
+      disabled: isEventTab ? !commandClipboard : !canEditActive,
+      onSelect: () => {
+        if (isEventTab) pasteEventCommands();
+        else editorApiRef.current?.paste();
+      },
     },
   ];
 
@@ -1210,8 +1443,14 @@ export default function App() {
           onDropFile={handleDropFile}
           onCursorChange={(line, column) => setCursor({ line, column })}
           editorApiRef={editorApiRef}
+          eventApiRef={eventApiRef}
+          onEventSelectionChange={setEventHasSelection}
           onSaveTextBlock={saveEventTextBlock}
           onSaveParameters={saveEventParameters}
+          onReplaceCommands={(tab, startIndex, deleteCount, lines) =>
+            void replaceEventCommands(tab, startIndex, deleteCount, lines)
+          }
+          onDeleteCommands={deleteEventCommands}
           commandEnvironment={commandEnvironment}
         />
       </div>

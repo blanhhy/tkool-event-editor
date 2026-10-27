@@ -1,10 +1,11 @@
 import { lazy, Suspense, useMemo, useState, type DragEvent, type MutableRefObject } from 'react';
+import type { EventCommand } from 'rpgrt';
 import { formatBytes, kindLabel, type FileKind } from '../lib/file';
-import type { CommandLine, TextBlockKind } from '../lib/eventCommands';
+import { buildCommandLines, isSameCommands, type CommandLine, type TextBlockKind } from '../lib/eventCommands';
 import type { CommandEnvironment } from '../lib/commandSpec';
 import type { EventPageRef } from '../lib/events';
 import type { Encoding } from '../lib/project';
-import EventPageView from './EventPageView';
+import EventPageView, { type EventPageApi } from './EventPageView';
 import FileTypeIcon from './FileTypeIcon';
 import { FileIcon } from './icons';
 import type { TextEditorApi } from './TextEditor';
@@ -26,7 +27,13 @@ export interface EditorTab {
   dirty?: boolean;
   /** 事件页标签专用 */
   eventPage?: EventPageRef;
-  commands?: CommandLine[];
+  /** 事件页的原始指令（内存态，保存时才写回 LDB） */
+  commands?: EventCommand[];
+  /** 上次读取 / 保存时的指令快照，用于判断是否有未保存的修改 */
+  savedCommands?: EventCommand[];
+  /** 事件编辑历史（撤销 / 重做） */
+  undo?: EventCommand[][];
+  redo?: EventCommand[][];
   eventLoading?: boolean;
   eventError?: string | null;
 }
@@ -48,6 +55,19 @@ interface Props {
     text: string,
   ) => void;
   onSaveParameters?: (tab: EditorTab, line: CommandLine, parameters: number[]) => void;
+  /** 事件页指令区间写回（剪切 / 粘贴） */
+  onReplaceCommands?: (
+    tab: EditorTab,
+    startIndex: number,
+    deleteCount: number,
+    lines: EventCommand[],
+  ) => void;
+  /** 事件页删除指定下标的指令 */
+  onDeleteCommands?: (tab: EditorTab, indices: number[]) => void;
+  /** 事件页指令操作接口（复制 / 剪切 / 粘贴） */
+  eventApiRef?: MutableRefObject<EventPageApi | null>;
+  /** 事件页选择区变化 */
+  onEventSelectionChange?: (hasSelection: boolean) => void;
   /** 事件指令的校验环境（引擎 / 运行环境 / 数据库引用） */
   commandEnvironment?: CommandEnvironment;
 }
@@ -66,10 +86,20 @@ export default function EditorArea({
   editorApiRef,
   onSaveTextBlock,
   onSaveParameters,
+  onReplaceCommands,
+  onDeleteCommands,
+  eventApiRef,
+  onEventSelectionChange,
   commandEnvironment,
 }: Props) {
   const active = tabs.find((tab) => tab.path === activeId) ?? null;
   const [dropActive, setDropActive] = useState(false);
+
+  /** 事件页的原始指令 → 可渲染行（编辑只改内存，保存时才写回） */
+  const commandLines = useMemo(
+    () => buildCommandLines(active?.commands ?? []),
+    [active?.commands],
+  );
 
   // 事件页的校验环境带上所在分类：战斗指令只能出现在敌群事件里
   const eventEnvironment = useMemo(() => {
@@ -145,7 +175,13 @@ export default function EditorArea({
                   onClose(tab.path);
                 }}
               >
-                ×
+                {/* 事件页有未保存的修改时，叉号变成圆圈 */}
+                {tab.kind === 'event' &&
+                !isSameCommands(tab.commands, tab.savedCommands) ? (
+                  <span className="tabDirtyCircle" aria-label="未保存" />
+                ) : (
+                  '×'
+                )}
               </button>
             </div>
           ))}
@@ -177,13 +213,19 @@ export default function EditorArea({
         {active?.kind === 'event' && (
           <EventPageView
             title={active.name}
-            commands={active.commands ?? []}
+            commands={commandLines}
             loading={active.eventLoading ?? false}
             error={active.eventError ?? null}
             onSaveBlock={(kind, lines, text) => onSaveTextBlock?.(active, kind, lines, text)}
             onSaveParameters={(line, parameters) =>
               onSaveParameters?.(active, line, parameters)
             }
+            onReplaceCommands={(startIndex, deleteCount, lines) =>
+              onReplaceCommands?.(active, startIndex, deleteCount, lines)
+            }
+            onDeleteCommands={(indices) => onDeleteCommands?.(active, indices)}
+            apiRef={eventApiRef}
+            onSelectionChange={onEventSelectionChange}
             environment={eventEnvironment}
           />
         )}

@@ -243,6 +243,28 @@ export function buildCommandLines(commands: EventCommand[]): CommandLine[] {
   });
 }
 
+/**
+ * 两组指令内容是否一致。
+ * 事件页的“已修改”标记按内容比较（而不是粘性标记），
+ * 这样改回原样后标记会自动消失。
+ */
+export function isSameCommands(a?: EventCommand[], b?: EventCommand[]): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+
+  for (let index = 0; index < a.length; index += 1) {
+    const left = a[index];
+    const right = b[index];
+    if (left.code !== right.code || left.indent !== right.indent) return false;
+    if (left.string !== right.string) return false;
+    if (left.parameters.length !== right.parameters.length) return false;
+    for (let i = 0; i < left.parameters.length; i += 1) {
+      if (left.parameters[i] !== right.parameters[i]) return false;
+    }
+  }
+  return true;
+}
+
 export type RenderRow =
   | { kind: 'command'; line: CommandLine }
   | { kind: 'comment'; lines: CommandLine[] }
