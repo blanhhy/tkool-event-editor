@@ -1214,20 +1214,27 @@ button {
   flex: 0 0 auto;
 }
 
-.commandOperator {
-  color: var(--syntax-operator);
-}
-
-.commandSelf {
-  color: var(--syntax-self);
-}
-
 .commandKeyword {
   color: var(--syntax-keyword);
 }
 
-.commandBoolean {
+/* 摘要中的变量 / 开关引用 */
+.commandRef {
+  flex: 0 0 auto;
+  color: var(--syntax-operator);
+}
+
+/* 摘要中的数据库对象引用（角色 / 物品 / 技能 …），接数据库后显示名字 */
+.commandDatabase {
+  flex: 0 0 auto;
   color: var(--syntax-boolean);
+}
+
+/* 文本续行的前缀占位：与首行前缀完全同构，仅不可见，用于精确对齐 */
+.commandPrefixSpacer {
+  flex: 0 0 auto;
+  visibility: hidden;
+  user-select: none;
 }
 
 /* 插入点提示符：@ 之后的 > 用标点配色（与编辑器正文同色） */
@@ -1291,42 +1298,22 @@ button {
 }
 
 .commentLine {
-  color: var(--syntax-comment);
-}
-
-.commentHash {
-  margin-right: 6px;
-  color: var(--syntax-comment);
-  opacity: 0.6;
-  user-select: none;
-}
-
-/* 单行注释：井号前缀 + 单行输入 */
-.commentSingle {
   display: flex;
   align-items: flex-start;
-  gap: 0;
 }
 
-.commentSingle .commentLines {
-  flex: 1;
-  min-width: 0;
+.commentText {
+  color: var(--syntax-comment);
+  white-space: pre;
 }
 
-.commentSingle .commentInput {
+/* 续行内容与首行冒号之后的内容对齐（用同构前缀占位，不按 ch 估算） */
+
+.commentInput {
   flex: 1;
   min-width: 0;
   width: auto;
-}
-
-.commentMultiBody {
   display: block;
-}
-
-/* 无边框、透明背景，与代码文本自然融合 */
-.commentInput {
-  display: block;
-  width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
@@ -1342,8 +1329,7 @@ button {
 }
 
 /* 文本选择高亮与 CodeMirror 编辑器保持一致（同一套选区颜色） */
-.commentInput::selection,
-.messageInput::selection {
+.commentInput::selection {
   background: rgba(95, 145, 220, 0.28);
 }
 
@@ -1368,119 +1354,13 @@ button {
   align-items: flex-start;
 }
 
-/* 续行内容与首行反引号之后的内容左对齐（@message(` 共 10 个半角字符） */
-.messageContinuation {
-  padding-left: 10ch;
-}
-
-.messageDirective {
-  flex: 0 0 auto;
-  color: var(--syntax-function);
-}
-
-.messagePunct {
-  flex: 0 0 auto;
-  color: var(--syntax-punctuation);
-  user-select: none;
-}
-
-/* 反引号字符串与编辑器里的模板字符串同色（One Dark 的 special(string) → cyan） */
-.messageQuote {
-  flex: 0 0 auto;
-  color: var(--syntax-template);
-  user-select: none;
-}
+/* 续行内容与首行冒号之后的内容对齐（用同构前缀占位，不按 ch 估算） */
 
 .messageString {
   flex: 0 0 auto;
-  color: var(--syntax-template);
+  color: var(--syntax-string);
   /* 文本块同样不按宽度折行 */
   white-space: pre;
-}
-
-/* 编辑态：输入框紧跟前缀，内部各行自然从同一列开始 */
-.messageInput {
-  flex: 1;
-  min-width: 0;
-  display: block;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  outline: none;
-  resize: none;
-  overflow: hidden;
-  background: transparent;
-  color: var(--syntax-template);
-  font: inherit;
-  line-height: inherit;
-  white-space: pre-wrap;
-  caret-color: #7fb0ff;
-}
-
-/* ── 等待指令（11410） ───────────────────────────────── */
-
-/* 单行表达式，各片段紧挨着排列 */
-.waitContent {
-  display: flex;
-  align-items: baseline;
-  gap: 0;
-  cursor: text;
-}
-
-.waitPunct {
-  flex: 0 0 auto;
-  color: var(--syntax-punctuation);
-  user-select: none;
-}
-
-.waitNumber {
-  flex: 0 0 auto;
-  color: var(--syntax-number);
-}
-
-.waitBoolean {
-  flex: 0 0 auto;
-  color: var(--syntax-boolean);
-}
-
-/* LSP 风格的参数名 / 单位提示气泡 */
-.paramHint {
-  flex: 0 0 auto;
-  margin: 0 3px;
-  padding: 0 4px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--color-text-dim);
-  font-size: 11.5px;
-  user-select: none;
-}
-
-/* 编辑态输入框：无边框、透明背景，只占内容宽度 */
-.waitInput {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--syntax-number);
-  font: inherit;
-  line-height: inherit;
-  caret-color: #7fb0ff;
-}
-
-/* 标签号输入框：只改数字，颜色与标签名一致 */
-.labelInput {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--syntax-function);
-  font: inherit;
-  line-height: inherit;
-  caret-color: #7fb0ff;
 }
 
 /* ── 指令选择弹窗 ───────────────────────────────────── */

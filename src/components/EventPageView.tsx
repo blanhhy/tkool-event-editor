@@ -1,5 +1,6 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Cmd } from '../lib/commandCodes';
+import { buildCommandDisplay, type DisplayTone } from '../lib/commandDisplay';
 import {
   findCommandClusters,
   groupCommandLines,
@@ -17,9 +18,7 @@ import CommentBlock from './CommentBlock';
 import DiagnosticMark from './DiagnosticMark';
 import IndentGuides from './IndentGuides';
 import InsertButton from './InsertButton';
-import LabelCommand from './LabelCommand';
 import MessageBlock from './MessageBlock';
-import WaitCommand from './WaitCommand';
 
 /** 鼠标移出指令簇后，留给移向加号按钮的宽限时间 */
 const HOVER_HIDE_DELAY = 120;
@@ -43,7 +42,8 @@ export default function EventPageView({
   loading,
   error,
   onSaveBlock,
-  onSaveParameters,
+  // 行内编辑已移除；参数写回留给后续的专用编辑器
+  onSaveParameters: _onSaveParameters,
   environment,
 }: Props) {
   /** 打开指令选择弹窗时记录的目标位置；null 表示弹窗关闭 */
@@ -161,24 +161,6 @@ export default function EventPageView({
               <MessageBlock
                 key={`message-${row.lines[0].index}`}
                 lines={row.lines}
-                onSave={(text) => onSaveBlock?.('message', row.lines, text)}
-                {...rowProps}
-              />
-            ) : row.line.code === Cmd.Wait ? (
-              <WaitCommand
-                key={row.line.index}
-                line={row.line}
-                diagnostics={diagnosticsByIndex.get(row.line.index)}
-                onSave={(parameters) => onSaveParameters?.(row.line, parameters)}
-                {...rowProps}
-              />
-            ) : row.line.code === Cmd.Label || row.line.code === Cmd.JumpToLabel ? (
-              <LabelCommand
-                key={row.line.index}
-                line={row.line}
-                kind={row.line.code === Cmd.Label ? 'label' : 'goto'}
-                diagnostics={diagnosticsByIndex.get(row.line.index)}
-                onSave={(parameters) => onSaveParameters?.(row.line, parameters)}
                 {...rowProps}
               />
             ) : (
@@ -240,14 +222,7 @@ function CommandRow({
 }) {
   // 指令 10 是可插入新代码的空行，标成 @> 提示插入点；> 用标点配色
   const isEmptySlot = line.code === Cmd.End;
-  // 少数指令有专属的代码化写法
-  const isEraseEvent = line.code === Cmd.EraseEvent;
-  const isEndProcessing = line.code === Cmd.EndEventProcessing;
-  const isLoop = line.code === Cmd.Loop;
-  const isEndLoop = line.code === Cmd.EndLoop;
-  const isBreakLoop = line.code === Cmd.BreakLoop;
-  // 默认样式里的名字不带空格
-  const displayName = line.name.replace(/\s+/g, '');
+  const display = buildCommandDisplay(line);
 
   return (
     <div
@@ -270,48 +245,25 @@ function CommandRow({
             <span className="commandName">@</span>
             <span className="commandPunct">&gt;</span>
           </>
-        ) : isEraseEvent ? (
-          <>
-            {/* 暂时消除事件 → ~this()：~ 操作符色，this 用 self 色 */}
-            <span className="commandOperator">~</span>
-            <span className="commandSelf">this</span>
-            <span className="commandPunct">()</span>
-          </>
-        ) : isLoop ? (
-          <>
-            {/* 循环 → while true do：关键字 + 布尔字面量 */}
-            <span className="commandKeyword">{'while '}</span>
-            <span className="commandBoolean">true</span>
-            <span className="commandKeyword">{' do'}</span>
-          </>
-        ) : isEndLoop ? (
-          <span className="commandKeyword">done</span>
-        ) : isBreakLoop ? (
-          <span className="commandKeyword">break</span>
-        ) : isEndProcessing ? (
-          /* 中断事件处理 → return，关键字色 */
-          <span className="commandKeyword">return</span>
         ) : (
           <>
-            {/* 没有专属编辑/渲染规则的指令统一显示成：@名字(裸参数, text="文本") */}
-            <span className="commandName">{`@${displayName}`}</span>
-            <span className="commandPunct">(</span>
-            {line.params.map((param, index) => (
-              <Fragment key={index}>
-                {/* 逗号是标点，不能跟着参数染成数字色 */}
-                {index > 0 && <span className="commandPunct">, </span>}
-                <span className="commandParams">{param}</span>
-              </Fragment>
-            ))}
-            {line.text !== null && (
+            {/* EasyRPG 风格：中文指令名 + 冒号 + 语义化的参数摘要 */}
+            <span className="commandName">{display.name}</span>
+            {display.segments.length > 0 && (
               <>
-                {/* 参数名 text 用气泡提示，与 @sleep 的提示一致 */}
-                {line.params.length > 0 && <span className="commandPunct">, </span>}
-                <span className="paramHint">text=</span>
-                <span className="commandText">{`"${line.text}"`}</span>
+                <span className="commandPunct">: </span>
+                {display.segments.map((item, index) => (
+                  <span
+                    key={index}
+                    className={TONE_CLASS[item.tone]}
+                    data-ref-kind={item.ref?.kind}
+                    data-ref-id={item.ref?.id}
+                  >
+                    {item.text}
+                  </span>
+                ))}
               </>
             )}
-            <span className="commandPunct">)</span>
           </>
         )}
         <DiagnosticMark diagnostics={diagnostics} />
@@ -319,6 +271,19 @@ function CommandRow({
     </div>
   );
 }
+
+/** 摘要片段色调 → 已有的语法配色类 */
+const TONE_CLASS: Record<DisplayTone, string> = {
+  name: 'commandName',
+  punct: 'commandPunct',
+  number: 'commandParams',
+  string: 'commandText',
+  keyword: 'commandKeyword',
+  variable: 'commandRef',
+  switch: 'commandRef',
+  database: 'commandDatabase',
+  time: 'commandParams',
+};
 
 /** 页头问题数气泡的提示文本 */
 function summarize(diagnosticsByIndex: Map<number, Diagnostic[]>): string {

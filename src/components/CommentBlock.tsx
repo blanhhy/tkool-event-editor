@@ -67,7 +67,6 @@ export default function CommentBlock({ lines, onSave, onHover, onHoverEnd, activ
   }
 
   const displayLines = (editing ? draft : value).split('\n');
-  const isMultiLine = displayLines.length > 1;
   const firstNumber = lines[0].index + 1;
 
   // 一条指令占一个行号：文本里的换行已在显示前剔除，不再产生额外的视觉行
@@ -82,17 +81,7 @@ export default function CommentBlock({ lines, onSave, onHover, onHoverEnd, activ
       onMouseEnter={onHover}
       onMouseLeave={onHoverEnd}
     >
-      {isMultiLine && (
-        <div key="fence-top" className="commandRow commentFenceRow" onClick={startEditing}>
-          <span className="commandIndex" />
-          <IndentGuides depth={lines[0].indent} />
-          <div className="commandContent commentFence">
-            """
-          </div>
-        </div>
-      )}
-
-      <div key="body" className="commandRow">
+      <div className="commandRow">
         <div className="commandIndex commentIndex">
           {gutter.map((number, index) => (
             <div key={index}>{number ?? '\u00A0'}</div>
@@ -102,9 +91,10 @@ export default function CommentBlock({ lines, onSave, onHover, onHoverEnd, activ
         <IndentGuides depth={lines[0].indent} />
 
         <div className="commandContent commentContent">
-          <div className={isMultiLine ? 'commentMultiBody' : 'commentSingle'}>
-            {!isMultiLine && <span className="commentHash">#</span>}
-            {editing ? (
+          {editing ? (
+            <div className="commentLine" onClick={() => inputRef.current?.focus()}>
+              <span className="commandName">注释</span>
+              <span className="commandPunct">: </span>
               <textarea
                 ref={inputRef}
                 className="commentInput"
@@ -120,28 +110,28 @@ export default function CommentBlock({ lines, onSave, onHover, onHoverEnd, activ
                   }
                 }}
               />
-            ) : (
-              <div className="commentLines" onClick={startEditing}>
-                {displayLines.map((text, index) => (
-                  <div className="commentLine" key={index}>
-                    {text || '\u00A0'}
-                  </div>
-                ))}
+            </div>
+          ) : (
+            <div className="commentLines" onClick={startEditing}>
+              <div className="commentLine">
+                <span className="commandName">注释</span>
+                <span className="commandPunct">: </span>
+                <span className="commentText">{displayLines[0] || '\u00A0'}</span>
               </div>
-            )}
-          </div>
+              {displayLines.slice(1).map((text, index) => (
+                <div key={index} className="commentLine">
+                  {/* 续行用同构的不可见前缀占位，保证与首行文字左缘严格对齐 */}
+                  <span className="commandPrefixSpacer" aria-hidden="true">
+                    <span className="commandName">注释</span>
+                    <span className="commandPunct">: </span>
+                  </span>
+                  <span className="commentText">{text || '\u00A0'}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {isMultiLine && (
-        <div key="fence-bottom" className="commandRow commentFenceRow" onClick={startEditing}>
-          <span className="commandIndex" />
-          <IndentGuides depth={lines[0].indent} />
-          <div className="commandContent commentFence">
-            """
-          </div>
-        </div>
-      )}
     </div>
   );
 }
