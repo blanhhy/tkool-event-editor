@@ -13,6 +13,7 @@ import EventManager from './components/EventManager';
 import FileTree, { type TreeActions } from './components/FileTree';
 import MenuBar from './components/MenuBar';
 import ProjectMenu from './components/ProjectMenu';
+import SearchResults from './components/SearchResults';
 import SidePanelSection from './components/SidePanelSection';
 import type { ContextMenuItem } from './components/ContextMenu';
 import type { TextEditorApi } from './components/TextEditor';
@@ -74,6 +75,12 @@ import {
   type EventCatalogResult,
   type EventLoadProgress,
 } from './lib/lcfEvents';
+import {
+  collectTextLines,
+  listSearchablePages,
+  searchPages,
+  type SearchPageEntry,
+} from './lib/eventSearch';
 import { saveRecentProject, type RecentProject } from './lib/recent';
 import { INDENT_COLORS, SYNTAX_COLORS } from './lib/codeTheme';
 import { type CommandEnvironment } from './lib/commandSpec';
@@ -140,6 +147,17 @@ export default function App() {
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  /** 搜索索引：页 → 文本行；按工程 / 编码 / 失效计数区分 */
+  const [searchIndex, setSearchIndex] = useState<{
+    key: string;
+    entries: SearchPageEntry[];
+  } | null>(null);
+  const [searchIndexing, setSearchIndexing] = useState(false);
+  const [searchProgress, setSearchProgress] = useState<{ done: number; total: number } | null>(null);
+  /** 事件缓存被丢弃（刷新）后递增，触发索引重建 */
+  const [searchEpoch, setSearchEpoch] = useState(0);
+  const searchIndexRef = useRef<{ key: string; entries: SearchPageEntry[] } | null>(null);
+  const searchBuildRef = useRef(0);
   const [eventsOpen, setEventsOpen] = useState(true);
   const [catalog, setCatalog] = useState<EventCatalog>(emptyCatalog);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -346,6 +364,11 @@ export default function App() {
     setEventsLoading(false);
     setEventsProgress(null);
     setEventsError(null);
+    setSearchIndex(null);
+    setSearchIndexing(false);
+    setSearchProgress(null);
+    setSearchEpoch((value) => value + 1);
+    searchIndexRef.current = null;
     setClipboard(null);
     setRenamingPath(null);
     setError(null);
@@ -500,6 +523,10 @@ export default function App() {
     if (!root) return;
 
     invalidateEventCache();
+    // 搜索索引基于磁盘内容，缓存失效后一并丢弃
+    searchIndexRef.current = null;
+    setSearchIndex(null);
+    setSearchEpoch((value) => value + 1);
 
     // 先等事件树读完，再逐个重读事件页；内置浏览器并发枚举目录会挂起
     void loadEventsFor(root, encoding, { silent: true, engine }).then(async () => {
@@ -1213,6 +1240,83 @@ export default function App() {
     };
   }, [catalog, engine, runtime]);
 
+  /** 搜索索引键：工程、编码或缓存失效后重建 */
+  const searchIndexKey = `${projectSeq}:${encoding}:${searchEpoch}`;
+
+  /**
+   * 打开搜索应用时建立文本索引：逐页读取指令，只保留文本行。
+   * 顺序读取并在批次间让出主线程，避免大工程卡住界面。
+   */
+  useEffect(() => {
+    if (!root || sideView !== 'search' || eventsLoading) return;
+    if (searchIndexRef.current?.key === searchIndexKey) return;
+
+    const token = searchBuildRef.current + 1;
+    searchBuildRef.current = token;
+    const pages = listSearchablePages(catalog);
+    const total = pages.length;
+    setSearchIndexing(true);
+    setSearchProgress({ done: 0, total });
+
+    void (async () => {
+      const entries: SearchPageEntry[] = [];
+      for (let index = 0; index < total; index += 1) {
+        if (searchBuildRef.current !== token) return;
+        const page = pages[index];
+        let commands: EventCommand[] = [];
+        try {
+          commands = await loadEventPageCommands(root, encoding, page.ref);
+        } catch {
+          // 单页读取失败时跳过，不影响其余页
+        }
+        entries.push({ ...page, lines: collectTextLines(commands) });
+
+        if (index % 8 === 7 || index === total - 1) {
+          setSearchProgress({ done: index + 1, total });
+        }
+        if (index % 16 === 15) await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      if (searchBuildRef.current !== token) return;
+
+      const next = { key: searchIndexKey, entries };
+      searchIndexRef.current = next;
+      setSearchIndex(next);
+      setSearchIndexing(false);
+      setSearchProgress(null);
+    })();
+
+    return () => {
+      if (searchBuildRef.current === token) {
+        searchBuildRef.current += 1;
+        setSearchIndexing(false);
+        setSearchProgress(null);
+      }
+    };
+  }, [root, sideView, eventsLoading, catalog, encoding, searchIndexKey]);
+
+  /** 搜索结果：未保存的事件页以内存中的指令为准 */
+  const searchGroups = useMemo(() => {
+    if (!searchQuery.trim() || !searchIndex || searchIndex.key !== searchIndexKey) return [];
+    if (searchIndex.entries.length === 0) return [];
+
+    const inMemory = new Map<string, string[]>();
+    for (const tab of tabs) {
+      if (tab.kind === 'event' && tab.eventPage && tab.commands) {
+        inMemory.set(pageKey(tab.eventPage), collectTextLines(tab.commands));
+      }
+    }
+
+    const entries =
+      inMemory.size === 0
+        ? searchIndex.entries
+        : searchIndex.entries.map((entry) => {
+            const lines = inMemory.get(pageKey(entry.ref));
+            return lines ? { ...entry, lines } : entry;
+          });
+
+    return searchPages(entries, searchQuery);
+  }, [searchQuery, searchIndex, searchIndexKey, tabs]);
+
   const treeActions: TreeActions = {
     clipboard,
     renamingPath,
@@ -1411,6 +1515,21 @@ export default function App() {
                     aria-label="搜索"
                     onChange={(event) => setSearchQuery(event.target.value)}
                   />
+                  {(searchIndexing || eventsLoading) && (
+                    <div className="searchHint">
+                      {searchProgress && searchProgress.total > 0
+                        ? `正在读取事件 ${searchProgress.done}/${searchProgress.total}`
+                        : '正在读取事件…'}
+                    </div>
+                  )}
+                  {!searchIndexing &&
+                    !eventsLoading &&
+                    searchQuery.trim() !== '' &&
+                    (searchGroups.length === 0 ? (
+                      <div className="searchHint">未找到结果</div>
+                    ) : (
+                      <SearchResults groups={searchGroups} />
+                    ))}
                 </div>
               </SidePanelSection>
             ) : (

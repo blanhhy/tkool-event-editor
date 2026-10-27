@@ -73,6 +73,21 @@ export function pageKey(ref: EventPageRef): string {
   }
 }
 
+/**
+ * 事件页的路径（搜索结果的右侧展示）：
+ *   CExxxx / MAPxxxx/EVxxxx/Px / Troopxxxx/Px
+ */
+export function formatEventPagePath(ref: EventPageRef): string {
+  switch (ref.category) {
+    case 'common':
+      return `CE${String(ref.commonEventId).padStart(4, '0')}`;
+    case 'map':
+      return `MAP${String(ref.mapId).padStart(4, '0')}/EV${String(ref.eventId).padStart(4, '0')}/P${ref.pageIndex + 1}`;
+    case 'troop':
+      return `Troop${String(ref.troopId).padStart(4, '0')}/P${ref.pageIndex + 1}`;
+  }
+}
+
 export function countEventPages(catalog: EventCatalog): number {
   const count = (events: EventObject[]) =>
     events.reduce((sum, event) => sum + event.pages.length, 0);
