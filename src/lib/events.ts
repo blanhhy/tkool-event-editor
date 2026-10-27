@@ -75,16 +75,17 @@ export function pageKey(ref: EventPageRef): string {
 
 /**
  * 事件页的路径（搜索结果的右侧展示）：
- *   CExxxx / MAPxxxx/EVxxxx/Px / Troopxxxx/Px
+ *   CE3 / MAP2/EV6/P4 / Troop1/P1
+ * 编号不补前导零，保持简短。
  */
 export function formatEventPagePath(ref: EventPageRef): string {
   switch (ref.category) {
     case 'common':
-      return `CE${String(ref.commonEventId).padStart(4, '0')}`;
+      return `CE${ref.commonEventId}`;
     case 'map':
-      return `MAP${String(ref.mapId).padStart(4, '0')}/EV${String(ref.eventId).padStart(4, '0')}/P${ref.pageIndex + 1}`;
+      return `MAP${ref.mapId}/EV${ref.eventId}/P${ref.pageIndex + 1}`;
     case 'troop':
-      return `Troop${String(ref.troopId).padStart(4, '0')}/P${ref.pageIndex + 1}`;
+      return `Troop${ref.troopId}/P${ref.pageIndex + 1}`;
   }
 }
 
@@ -128,4 +129,16 @@ export function formatMapEventLabel(id: number, name: string): string {
   const trimmed = name.trim();
   if (!trimmed || trimmed.toUpperCase() === label) return label;
   return `${label} ${trimmed}`;
+}
+
+/**
+ * 事件页的展示名（标签页 / 搜索结果）：只用事件名，不拼编号；
+ * 事件名为空时退回带编号的默认标签。
+ */
+export function eventPageDisplayName(event: EventObject): string {
+  const name = event.name.trim();
+  if (name) return name;
+  return event.category === 'map'
+    ? formatMapEventLabel(event.id, '')
+    : formatEventLabel(event.id, '');
 }

@@ -1,5 +1,6 @@
 import {
   EVENT_CATEGORY_LABELS,
+  eventPageDisplayName,
   formatEventLabel,
   formatMapEventLabel,
   formatMapLabel,
@@ -132,6 +133,8 @@ function EventObjectRow({
     event.category === 'map'
       ? formatMapEventLabel(event.id, event.name)
       : formatEventLabel(event.id, event.name);
+  // 页名（标签页标题）：只用事件名，不拼编号
+  const pageLabel = eventPageDisplayName(event);
 
   return (
     <TreeBranch
@@ -147,7 +150,7 @@ function EventObjectRow({
           depth={depth + 1}
           selected={selected}
           onSelectPage={onSelectPage}
-          selectLabel={event.pages.length > 1 ? `${eventLabel} · 页${page.index}` : eventLabel}
+          selectLabel={event.pages.length > 1 ? `${pageLabel} · 页${page.index}` : pageLabel}
         />
       ))}
     </TreeBranch>

@@ -1,8 +1,7 @@
 import type { EventCommand } from 'rpgrt';
 import {
-  formatEventLabel,
+  eventPageDisplayName,
   formatEventPagePath,
-  formatMapEventLabel,
   type EventCatalog,
   type EventPageRef,
 } from './events';
@@ -56,9 +55,7 @@ export function listSearchablePages(catalog: EventCatalog): SearchablePage[] {
   const pages: SearchablePage[] = [];
 
   for (const event of catalog.commonEvents) {
-    const name = event.name.trim()
-      ? formatEventLabel(event.id, event.name)
-      : `公共事件 ${event.id}`;
+    const name = eventPageDisplayName(event);
     for (const page of event.pages) {
       pages.push({ ref: page.ref, name, path: formatEventPagePath(page.ref) });
     }
@@ -66,7 +63,7 @@ export function listSearchablePages(catalog: EventCatalog): SearchablePage[] {
 
   for (const map of catalog.maps) {
     for (const event of map.events) {
-      const name = formatMapEventLabel(event.id, event.name);
+      const name = eventPageDisplayName(event);
       for (const page of event.pages) {
         pages.push({ ref: page.ref, name, path: formatEventPagePath(page.ref) });
       }
@@ -74,7 +71,7 @@ export function listSearchablePages(catalog: EventCatalog): SearchablePage[] {
   }
 
   for (const troop of catalog.troops) {
-    const name = troop.name.trim() ? formatEventLabel(troop.id, troop.name) : `敌群 ${troop.id}`;
+    const name = eventPageDisplayName(troop);
     for (const page of troop.pages) {
       pages.push({ ref: page.ref, name, path: formatEventPagePath(page.ref) });
     }
