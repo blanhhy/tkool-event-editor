@@ -63,6 +63,12 @@ export default function CommentBlock({
    */
   const [highlightSuppressed, setHighlightSuppressed] = useState(false);
   const exitFocusRef = useRef<number | null>(null);
+  /**
+   * 在文字上按下鼠标到这次点击落地之间，先不显示簇高亮。
+   * 点击要进入编辑时，选择更新与进入编辑未必渲染在同一帧，
+   * 中间若先画出簇高亮就会闪一下。
+   */
+  const [pressPending, setPressPending] = useState(false);
   /** 行内编辑时文本域里选区的自绘轮廓（原生选区无法做圆角） */
   const [editShape, setEditShape] = useState<{
     left: number;
@@ -166,6 +172,13 @@ export default function CommentBlock({
     }
   }
 
+  // 兜底：鼠标松开的事件丢失（例如在窗口外松开）时也要恢复高亮
+  useEffect(() => {
+    if (!pressPending) return;
+    const timer = window.setTimeout(() => setPressPending(false), 500);
+    return () => window.clearTimeout(timer);
+  }, [pressPending]);
+
   // 焦点行变化说明这次点击已经落地，簇高亮按新的选择结果来
   useEffect(() => {
     if (!highlightSuppressed) return;
@@ -192,6 +205,7 @@ export default function CommentBlock({
     beforeEditRef.current = value;
     setDraft(value);
     setCaret(caretOffset(event, value.split('\n'), lines[0].index));
+    setPressPending(false);
     setEditing(true);
   }
 
@@ -238,7 +252,20 @@ export default function CommentBlock({
       className="commentBlock"
       role="listitem"
       data-command-index={lines[0].index}
-      data-active={active && !editing && !highlightSuppressed ? 'true' : undefined}
+      data-active={
+        active && !editing && !highlightSuppressed && !pressPending ? 'true' : undefined
+      }
+      // 按在文字上时先压住簇高亮，直到这次点击的结果落地（见 pressPending）
+      onMouseDown={(event) => {
+        if (editing) return;
+        const target = event.target as HTMLElement;
+        if (!target.closest('.commentLines') || target.closest('.commandName, .commandPunct')) {
+          return;
+        }
+        setPressPending(true);
+      }}
+      onMouseUp={() => setPressPending(false)}
+      onMouseLeave={() => setPressPending(false)}
       onClick={(event) => {
         const target = event.target as HTMLElement;
         // 编辑态点文本区时按鼠标所在行定焦点；点行号仍按点击的行
