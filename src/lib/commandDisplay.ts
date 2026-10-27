@@ -273,7 +273,8 @@ export function buildCommandDisplay(line: CommandLine): CommandDisplay {
         sep(),
         num(at(0)),
         sep(),
-        kw(at(1) ? '左' : '右'),
+        // p1 = face_right（与 schema / 对话框的「显示在右侧」一致）
+        kw(at(1) ? '右' : '左'),
         ...(at(2) ? [sep(), kw('翻转')] : []),
       );
 

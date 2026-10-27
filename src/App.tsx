@@ -1480,6 +1480,7 @@ export default function App() {
           onDeleteCommands={deleteEventCommands}
           onCopyCommands={storeCommandClipboard}
           commandEnvironment={commandEnvironment}
+          projectRoot={root}
         />
       </div>
 

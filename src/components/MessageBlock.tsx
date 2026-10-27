@@ -7,6 +7,8 @@ interface Props {
   lines: CommandLine[];
   /** 点击选中该指令簇；lineIndex 为点击位置所在的行 */
   onSelect?: (lineIndex: number) => void;
+  /** 双击编辑该指令簇（消息块目前没有行内编辑，统一走参数面板） */
+  onEdit?: (lineIndex: number) => void;
   /** 该块是否属于当前选中的指令簇 */
   active?: boolean;
   /** 该块是整块选择区的首 / 尾块：只圆外露的角 */
@@ -26,6 +28,7 @@ interface Props {
 export default function MessageBlock({
   lines,
   onSelect,
+  onEdit,
   active,
   activeStart,
   activeEnd,
@@ -45,6 +48,7 @@ export default function MessageBlock({
       data-command-index={lines[0].index}
       data-active={active ? 'true' : undefined}
       onClick={(event) => onSelect?.(clickedLineIndex(event, lines[0].index))}
+      onDoubleClick={(event) => onEdit?.(clickedLineIndex(event, lines[0].index))}
     >
       <div className="commandRow">
         <div className="commandIndex messageIndex">

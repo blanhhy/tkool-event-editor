@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Engine } from '../lib/environment';
+import { Cmd } from '../lib/commandCodes';
 import {
   buildCommandForm,
   fieldLabel,
@@ -7,7 +8,7 @@ import {
   resolveField,
   type CommandFormModel,
 } from '../lib/commandForm';
-import type { CommandDraft } from '../lib/eventCommands';
+import type { CommandDraft, FaceGraphicState } from '../lib/eventCommands';
 import {
   COMMAND_DIALOGS,
   type DialogField,
@@ -18,11 +19,18 @@ import {
   type GroupRow,
   type GroupSection,
 } from '../lib/commandDialogs';
+import MessagePreview from './MessagePreview';
 
 interface Props {
   code: number;
   label: string;
   engine: Engine;
+  /** 工程目录：显示文字指令用它读取 System 图做实时预览 */
+  root?: FileSystemDirectoryHandle | null;
+  /** 本页上方最近的「更改脸图」指令：显示文字的预览据此渲染脸图 */
+  face?: FaceGraphicState | null;
+  /** 编辑态：用原指令的参数与文本回填控件的初始值 */
+  initial?: { parameters: number[]; text?: string } | null;
   onCancel: () => void;
   onConfirm: (draft: CommandDraft) => void;
 }
@@ -32,12 +40,24 @@ interface Props {
  * 有官方布局（sections）的指令按手册还原成分组框 + 单选行；
  * 其余指令退回平铺字段或 schema 自动排列。
  */
-export default function CommandParamsForm({ code, label, engine, onCancel, onConfirm }: Props) {
+export default function CommandParamsForm({
+  code,
+  label,
+  engine,
+  root,
+  face,
+  initial,
+  onCancel,
+  onConfirm,
+}: Props) {
   const model = useMemo(() => buildCommandForm(code, engine), [code, engine]);
   const spec = COMMAND_DIALOGS[code];
-  const [values, setValues] = useState<number[]>(() => buildInitialValues(model, spec));
-  const [text, setText] = useState('');
-  const [raw, setRaw] = useState('');
+  const [values, setValues] = useState<number[]>(() =>
+    buildInitialValues(model, spec, initial?.parameters),
+  );
+  const [text, setText] = useState(() => initial?.text ?? '');
+  // 未建模的指令只剩「原始参数」输入框，同样用原参数回填
+  const [raw, setRaw] = useState(() => initial?.parameters.join(' ') ?? '');
 
   const setParam = (p: number, rawValue: number, min?: number, max?: number) => {
     setValues((prev) => {
@@ -88,6 +108,10 @@ export default function CommandParamsForm({ code, label, engine, onCancel, onCon
               />
             )}
           </div>
+        )}
+
+        {code === Cmd.ShowMessage && (
+          <MessagePreview text={text} root={root ?? null} face={face ?? null} />
         )}
 
         {model.unknownLayout && !spec && (
@@ -142,7 +166,11 @@ export default function CommandParamsForm({ code, label, engine, onCancel, onCon
   );
 }
 
-function buildInitialValues(model: CommandFormModel, spec?: DialogSpec): number[] {
+function buildInitialValues(
+  model: CommandFormModel,
+  spec?: DialogSpec,
+  initial?: number[],
+): number[] {
   const values = initialValues(model);
   const schemaPositions = new Set(model.fields.map((field) => field.position));
   const ensure = (position: number) => {
@@ -190,6 +218,14 @@ function buildInitialValues(model: CommandFormModel, spec?: DialogSpec): number[
   }
 
   if (spec?.paramCount) ensure(spec.paramCount - 1);
+
+  // 编辑态：原指令的参数覆盖默认值，其余位置保留默认
+  if (initial && initial.length > 0) {
+    ensure(initial.length - 1);
+    initial.forEach((value, position) => {
+      values[position] = value;
+    });
+  }
 
   return values;
 }

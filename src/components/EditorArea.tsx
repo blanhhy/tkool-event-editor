@@ -74,6 +74,8 @@ interface Props {
   onEventSelectionChange?: (hasSelection: boolean) => void;
   /** 事件指令的校验环境（引擎 / 运行环境 / 数据库引用） */
   commandEnvironment?: CommandEnvironment;
+  /** 工程目录：事件指令参数面板的渲染预览需要读取工程素材 */
+  projectRoot?: FileSystemDirectoryHandle | null;
 }
 
 const DRAG_TYPE = 'application/x-tkool-file';
@@ -96,6 +98,7 @@ export default function EditorArea({
   eventApiRef,
   onEventSelectionChange,
   commandEnvironment,
+  projectRoot,
 }: Props) {
   const active = tabs.find((tab) => tab.path === activeId) ?? null;
   const [dropActive, setDropActive] = useState(false);
@@ -233,6 +236,7 @@ export default function EditorArea({
             apiRef={eventApiRef}
             onSelectionChange={onEventSelectionChange}
             environment={eventEnvironment}
+            projectRoot={projectRoot}
           />
         )}
 

@@ -1379,9 +1379,10 @@ const PAGE_3: Record<number, DialogSpec> = {
       when(row('开关', ref(1, 'switch')), 0, [0]),
       when(row(undefined, chk(2, '反转结果')), 0, [0]),
       when(row('变量', ref(1, 'variable')), 0, [1]),
-      when(row('比较', sel(2, COMPARE)), 0, [1]),
-      when(row('操作数', sel(3, OPERAND)), 0, [1]),
-      when(row('数值', num(4)), 0, [1]),
+      // 变量比较的 LCF 布局：p2 = 操作数类型，p3 = 数值 / 变量编号，p4 = 比较符
+      when(row('操作数', sel(2, OPERAND)), 0, [1]),
+      when(row('数值', num(3)), 0, [1]),
+      when(row('比较', sel(4, COMPARE)), 0, [1]),
       when(row('时间', num(1, undefined, { suffix: '秒' })), 0, [2, 10]),
       when(row('比较', sel(2, { 0: '大于等于', 1: '小于等于' })), 0, [2, 10]),
       when(row('金钱', num(1, undefined, { min: 0 })), 0, [3]),

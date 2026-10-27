@@ -520,6 +520,40 @@ export interface CommandDraft {
   text?: string;
 }
 
+/** 消息预览用的脸图状态：本页上方最近的「更改脸图」指令 */
+export interface FaceGraphicState {
+  /** 脸图文件名（FaceSet 目录下，不含扩展名） */
+  name: string;
+  /** 脸图编号 0-15 */
+  index: number;
+  /** 显示在右侧 */
+  atRight: boolean;
+  /** 水平翻转 */
+  flipped: boolean;
+}
+
+/**
+ * 找 before 之前最近的一条「更改脸图」指令。
+ * 名字为空的更改脸图表示清空脸图，因此遇到就停止向上找。
+ */
+export function findFaceGraphicBefore(
+  lines: CommandLine[],
+  before: number,
+): FaceGraphicState | null {
+  for (let index = Math.min(before, lines.length) - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (line.code !== Cmd.ChangeFaceGraphic) continue;
+    if (!line.text) return null;
+    return {
+      name: line.text,
+      index: line.params[0] ?? 0,
+      atRight: (line.params[1] ?? 0) !== 0,
+      flipped: (line.params[2] ?? 0) !== 0,
+    };
+  }
+  return null;
+}
+
 /** 打开子代码块的指令 → 它需要的闭合符 */
 const INSERT_BLOCK_CLOSERS: Record<number, number> = {
   [Cmd.ConditionalBranch]: Cmd.EndBranch,
@@ -566,17 +600,7 @@ export function buildInsertedCommands(draft: CommandDraft, indent: number): Even
   // 所以可见选项最多 4 个，索引必须与顺序一致；隐藏分支固定索引 4。
   if (draft.code === Cmd.ShowChoice) {
     const cancelType = draft.parameters[0] ?? 0;
-    const labels = (draft.text ?? '')
-      .split(/\r\n|\r|\n/)
-      .slice(0, CHOICE_VISIBLE_LIMIT)
-      .map((line) => line.trim());
-    while (labels.length > 0 && labels[labels.length - 1] === '') labels.pop();
-
-    // 取消时跳回某个选项：该选项必须存在，缺的补空行以保持索引对应
-    if (cancelType >= 1 && cancelType <= CHOICE_VISIBLE_LIMIT) {
-      while (labels.length < cancelType) labels.push('');
-    }
-    if (labels.length === 0) labels.push('');
+    const labels = normalizeChoiceLabels(draft.text ?? '', cancelType);
 
     const commands = [make(Cmd.ShowChoice, indent, [cancelType], labels.join(', '))];
     const pushBranch = (index: number, label: string) => {
@@ -600,4 +624,146 @@ export function buildInsertedCommands(draft: CommandDraft, indent: number): Even
   }
 
   return [make(draft.code, indent, draft.parameters, draft.text ?? '')];
+}
+
+function makeCommand(
+  code: number,
+  indent: number,
+  parameters: number[] = [],
+  string = '',
+): EventCommand {
+  return { code, indent: Math.max(0, indent), parameters, string };
+}
+
+/**
+ * 对话框里的「每行一个选项」→ 最终写回的选项表。
+ * 取消时跳回某个选项：该选项必须存在，缺的补空行以保持索引对应。
+ */
+function normalizeChoiceLabels(text: string, cancelType: number): string[] {
+  const labels = text
+    .split(/\r\n|\r|\n/)
+    .slice(0, CHOICE_VISIBLE_LIMIT)
+    .map((line) => line.trim());
+  while (labels.length > 0 && labels[labels.length - 1] === '') labels.pop();
+
+  if (cancelType >= 1 && cancelType <= CHOICE_VISIBLE_LIMIT) {
+    while (labels.length < cancelType) labels.push('');
+  }
+  if (labels.length === 0) labels.push('');
+  return labels;
+}
+
+/**
+ * 双击编辑：从整簇快照里还原面板需要回填的内容。
+ * 消息 / 注释按行拼回文本；显示选项取各选项行的标签（隐藏分支不算选项）。
+ */
+export function buildCommandEditState(snapshot: EventCommand[]): CommandDraft {
+  const head = snapshot[0];
+  if (!head) return { code: Cmd.End, parameters: [] };
+
+  if (head.code === Cmd.Comment || head.code === Cmd.ShowMessage) {
+    return {
+      code: head.code,
+      parameters: [],
+      text: snapshot.map((command) => command.string ?? '').join('\n'),
+    };
+  }
+
+  if (head.code === Cmd.ShowChoice) {
+    const labels = snapshot
+      .filter(
+        (command) =>
+          command.code === Cmd.ShowChoiceOption &&
+          (command.parameters[0] ?? 0) !== CHOICE_CANCEL_INDEX,
+      )
+      .map((command) => command.string ?? '');
+    return { code: head.code, parameters: [...head.parameters], text: labels.join('\n') };
+  }
+
+  return {
+    code: head.code,
+    parameters: [...head.parameters],
+    text: head.string ? head.string : undefined,
+  };
+}
+
+/**
+ * 双击编辑的结果：用新配置替换整簇快照。
+ *
+ * - 指令码没变时保留子代码块：带块的指令只换块头，分支体与闭合符原样接回；
+ * - 显示选项按新标签重建选项行，各分支体按索引原样保留；
+ * - 指令码变了则等同于插入，按新指令的完整结构重建。
+ */
+export function buildEditedCommands(
+  draft: CommandDraft,
+  snapshot: EventCommand[],
+  indent: number,
+): EventCommand[] {
+  const head = snapshot[0];
+  if (!head || draft.code !== head.code) return buildInsertedCommands(draft, indent);
+
+  // 消息 / 注释：整簇就是文本本身，按新文本重新拆行
+  if (draft.code === Cmd.Comment || draft.code === Cmd.ShowMessage) {
+    return buildInsertedCommands(draft, indent);
+  }
+
+  if (draft.code === Cmd.ShowChoice) {
+    return rebuildChoice(draft, snapshot, indent);
+  }
+
+  const header = makeCommand(
+    draft.code,
+    indent,
+    [...draft.parameters],
+    draft.text ?? head.string ?? '',
+  );
+
+  // 条件分歧 / 循环：只替换块头，子代码块与闭合符保持原样
+  if (BLOCK_OPENERS.has(draft.code)) return [header, ...snapshot.slice(1)];
+
+  return [header];
+}
+
+/** 显示选项：重建块头与选项行，分支体按选项索引接回 */
+function rebuildChoice(
+  draft: CommandDraft,
+  snapshot: EventCommand[],
+  indent: number,
+): EventCommand[] {
+  const cancelType = draft.parameters[0] ?? 0;
+  const labels = normalizeChoiceLabels(draft.text ?? '', cancelType);
+
+  const bodyEnd =
+    snapshot.length > 0 && snapshot[snapshot.length - 1].code === Cmd.ShowChoiceEnd
+      ? snapshot.length - 1
+      : snapshot.length;
+
+  // 原有分支：选项行之后的指令都属于该选项
+  const branches = new Map<number, EventCommand[]>();
+  let current: number | null = null;
+  for (let index = 1; index < bodyEnd; index += 1) {
+    const command = snapshot[index];
+    if (command.code === Cmd.ShowChoiceOption) {
+      current = command.parameters[0] ?? branches.size;
+      if (!branches.has(current)) branches.set(current, []);
+      continue;
+    }
+    branches.get(current ?? -1)?.push(command);
+  }
+
+  const result: EventCommand[] = [makeCommand(Cmd.ShowChoice, indent, [...draft.parameters], labels.join(', '))];
+  const pushBranch = (optionIndex: number, label: string) => {
+    result.push(makeCommand(Cmd.ShowChoiceOption, indent, [optionIndex], label));
+    const body = branches.get(optionIndex);
+    // 新加的选项没有旧分支体：留一行空指令，和插入时的结构一致
+    result.push(...(body && body.length > 0 ? body : [makeCommand(Cmd.End, indent + 1)]));
+  };
+
+  labels.forEach((label, optionIndex) => pushBranch(optionIndex, label));
+
+  // 「取消时新建分支」的隐藏分支（索引 4）不属于 4 个可见选项，原样保留
+  if (branches.has(CHOICE_CANCEL_INDEX)) pushBranch(CHOICE_CANCEL_INDEX, '');
+
+  result.push(makeCommand(Cmd.ShowChoiceEnd, indent));
+  return result;
 }

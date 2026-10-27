@@ -1667,6 +1667,34 @@ button {
   font-size: 12px;
 }
 
+/* 显示文字的实时渲染预览：画面按容器宽度缩放，不留黑边 */
+.messagePreview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.messagePreviewLabel {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.messagePreviewScreen {
+  display: block;
+}
+
+.messagePreviewCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.messagePreviewNote {
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
 .commandDialog {
   flex: 1;
   min-height: 0;

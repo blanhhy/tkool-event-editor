@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buildCommandPages, splitCommandColumns, type CommandEntry } from '../lib/commandCatalog';
 import type { CommandEnvironment } from '../lib/commandSpec';
-import type { CommandDraft } from '../lib/eventCommands';
+import type { CommandDraft, FaceGraphicState } from '../lib/eventCommands';
 import CommandParamsForm from './CommandParamsForm';
 
 /** 条目高度与间距，用于把面板撑到「堆满一列指令」的高度 */
@@ -15,6 +15,12 @@ interface Props {
   onClose: () => void;
   /** 当前工程环境：决定页数（2k 没有第 4 页）与是否追加扩展指令集页 */
   environment?: CommandEnvironment;
+  /** 工程目录：参数面板的渲染预览需要读取 System 图 */
+  projectRoot?: FileSystemDirectoryHandle | null;
+  /** 编辑态：双击的指令（含原参数与文本），打开时默认选中同码指令并回填 */
+  editing?: CommandDraft | null;
+  /** 本页上方最近的「更改脸图」指令：显示文字的预览据此渲染脸图 */
+  face?: FaceGraphicState | null;
   /** 参数表单点「确定」：把配置好的指令交给事件页插入 */
   onInsert?: (draft: CommandDraft) => void;
 }
@@ -25,7 +31,15 @@ interface Props {
  * 固定两列、固定高度；条目宽度取所有页里最长的指令名。
  * 选中指令后右侧显示参数表单，确定后交给事件页插入。
  */
-export default function CommandPicker({ open, onClose, environment, onInsert }: Props) {
+export default function CommandPicker({
+  open,
+  onClose,
+  environment,
+  projectRoot,
+  editing,
+  face,
+  onInsert,
+}: Props) {
   const [activePage, setActivePage] = useState(0);
   const [selected, setSelected] = useState<CommandEntry | null>(null);
   const [itemWidth, setItemWidth] = useState<number | null>(null);
@@ -65,13 +79,27 @@ export default function CommandPicker({ open, onClose, environment, onInsert }: 
     setItemWidth(Math.ceil(probe.getBoundingClientRect().width) + ITEM_CHROME);
   }, [open, allLabels]);
 
-  // 每次打开都回到第一页，并清掉上一次选中的指令
-  useEffect(() => {
-    if (open) {
-      setActivePage(0);
-      setSelected(null);
+  // 编辑态：在所有页里找同码指令，定位到它所在的页并选中
+  const editEntry = useMemo(() => {
+    if (!editing) return null;
+    for (let index = 0; index < pages.length; index += 1) {
+      const entry = pages[index].entries.find((item) => item.code === editing.code);
+      if (entry) return { page: index, entry };
     }
-  }, [open]);
+    return null;
+  }, [editing, pages]);
+
+  // 每次打开都回到第一页，并清掉上一次选中的指令；编辑态直接选中原指令
+  useEffect(() => {
+    if (!open) return;
+    if (editEntry) {
+      setActivePage(editEntry.page);
+      setSelected(editEntry.entry);
+      return;
+    }
+    setActivePage(0);
+    setSelected(null);
+  }, [open, editEntry]);
 
   useEffect(() => {
     if (!open) return;
@@ -158,10 +186,17 @@ export default function CommandPicker({ open, onClose, environment, onInsert }: 
           <div className="commandParamsPane">
             {selected ? (
               <CommandParamsForm
-                key={`${selected.code}-${engine}`}
+                key={`${selected.code}-${engine}-${editing ? 'edit' : 'new'}`}
                 code={selected.code}
                 label={selected.label}
                 engine={engine}
+                root={projectRoot}
+                face={face}
+                initial={
+                  editing && selected.code === editing.code
+                    ? { parameters: editing.parameters, text: editing.text }
+                    : null
+                }
                 onCancel={onClose}
                 onConfirm={(draft) => {
                   onInsert?.(draft);

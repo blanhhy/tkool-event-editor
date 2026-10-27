@@ -10,12 +10,16 @@ import type { EventCommand } from 'rpgrt';
 import { Cmd } from '../lib/commandCodes';
 import { buildCommandDisplay, type DisplayTone } from '../lib/commandDisplay';
 import {
+  buildCommandEditState,
+  buildEditedCommands,
   buildInsertedCommands,
   findCommandClusters,
+  findFaceGraphicBefore,
   groupCommandLines,
   type CommandCluster,
   type CommandDraft,
   type CommandLine,
+  type FaceGraphicState,
   type TextBlockKind,
 } from '../lib/eventCommands';
 import {
@@ -52,6 +56,8 @@ interface Props {
   onSaveParameters?: (line: CommandLine, parameters: number[]) => void;
   /** 指令集与参数校验环境；为空时不校验 */
   environment?: CommandEnvironment;
+  /** 工程目录：指令参数面板的渲染预览需要读取工程素材 */
+  projectRoot?: FileSystemDirectoryHandle | null;
   /** 指令操作接口（复制 / 剪切 / 粘贴） */
   apiRef?: MutableRefObject<EventPageApi | null>;
   /** 选择区变化通知，用于菜单项启用状态 */
@@ -73,6 +79,7 @@ export default function EventPageView({
   // 行内编辑已移除；参数写回留给后续的专用编辑器
   onSaveParameters: _onSaveParameters,
   environment,
+  projectRoot,
   apiRef,
   onSelectionChange,
   onReplaceCommands,
@@ -80,9 +87,20 @@ export default function EventPageView({
   onCopyCommands,
 }: Props) {
   /** 打开指令选择弹窗时记录的目标位置；null 表示弹窗关闭 */
-  const [insertTarget, setInsertTarget] = useState<Pick<CommandCluster, 'index' | 'indent'> | null>(
-    null,
-  );
+  const [insertTarget, setInsertTarget] = useState<
+    (Pick<CommandCluster, 'index' | 'indent'> & { face: FaceGraphicState | null }) | null
+  >(null);
+  /**
+   * 双击编辑的指令簇：start 为整簇在指令数组里的起点，
+   * snapshot 是编辑前的整簇副本（含子代码块与闭合符），确认后按它整体替换。
+   */
+  const [editTarget, setEditTarget] = useState<{
+    start: number;
+    indent: number;
+    snapshot: EventCommand[];
+    initial: CommandDraft;
+    face: FaceGraphicState | null;
+  } | null>(null);
   /**
    * 当前选择：focus 是焦点行（即当前选中的那一行），
    * extended 表示已按 Shift 进入多选，anchor 是 Shift 扩展的起点行。
@@ -377,6 +395,59 @@ export default function EventPageView({
     [insertTarget, onReplaceCommands],
   );
 
+  /** 双击某行：把该行所属的最小簇整簇交给编辑面板（快照含子代码块与闭合符） */
+  const editClusterAt = useCallback(
+    (lineIndex: number) => {
+      if (!onReplaceCommands) return;
+      const line = commands[lineIndex];
+      // code10 是编辑器维护的空占位行，没有可编辑的参数
+      if (!line || line.code === Cmd.End) return;
+
+      const cluster = clusters.get(lineIndex);
+      const start = cluster?.index ?? lineIndex;
+      const end = cluster?.end ?? lineIndex;
+      const snapshot: EventCommand[] = commands.slice(start, end + 1).map((item) => ({
+        code: item.code,
+        indent: item.indent,
+        parameters: [...item.params],
+        string: item.text ?? '',
+      }));
+
+      setInsertTarget(null);
+      setEditTarget({
+        start,
+        indent: commands[start]?.indent ?? line.indent,
+        snapshot,
+        initial: buildCommandEditState(snapshot),
+        // 消息预览按本页上方最近的「更改脸图」渲染脸图
+        face: findFaceGraphicBefore(commands, start),
+      });
+    },
+    [clusters, commands, onReplaceCommands],
+  );
+
+  /** 面板确认：编辑态替换整簇，插入态在加号位置插入 */
+  const confirmCommand = useCallback(
+    (draft: CommandDraft) => {
+      if (!editTarget) {
+        insertCommand(draft);
+        return;
+      }
+      if (!onReplaceCommands) return;
+
+      const lines = buildEditedCommands(draft, editTarget.snapshot, editTarget.indent);
+      if (lines.length === 0) {
+        setEditTarget(null);
+        return;
+      }
+
+      pendingSelection.current = { anchor: editTarget.start, focus: editTarget.start };
+      onReplaceCommands(editTarget.start, editTarget.snapshot.length, lines);
+      setEditTarget(null);
+    },
+    [editTarget, insertCommand, onReplaceCommands],
+  );
+
   // 暴露给编辑菜单与快捷键
   useEffect(() => {
     if (!apiRef) return;
@@ -571,6 +642,7 @@ export default function EventPageView({
                 key={`message-${row.lines[0].index}`}
                 lines={row.lines}
                 {...rowProps}
+                onEdit={editClusterAt}
               />
             ) : (
               <CommandRow
@@ -578,6 +650,7 @@ export default function EventPageView({
                 line={row.line}
                 diagnostics={diagnosticsByIndex.get(row.line.index)}
                 {...rowProps}
+                onEdit={editClusterAt}
               />
             );
           })}
@@ -612,25 +685,33 @@ export default function EventPageView({
           </div>
 
           {/* 单选时的插入按钮：定位到选择区第一行；多选时不显示，避免加号乱动 */}
-          {selection && !selection.extended && insertTarget === null && (
+          {selection && !selection.extended && insertTarget === null && editTarget === null && (
             <InsertButton
               top={selection.top}
-              onInsert={() =>
+              onInsert={() => {
+                const index = clusters.get(selection.focus)?.index ?? selection.focus;
                 setInsertTarget({
-                  index: clusters.get(selection.focus)?.index ?? selection.focus,
+                  index,
                   indent: clusters.get(selection.focus)?.indent ?? 0,
-                })
-              }
+                  face: findFaceGraphicBefore(commands, index),
+                });
+              }}
             />
           )}
         </div>
       )}
 
       <CommandPicker
-        open={insertTarget !== null}
-        onClose={() => setInsertTarget(null)}
+        open={insertTarget !== null || editTarget !== null}
+        onClose={() => {
+          setInsertTarget(null);
+          setEditTarget(null);
+        }}
         environment={environment}
-        onInsert={insertCommand}
+        projectRoot={projectRoot}
+        editing={editTarget?.initial ?? null}
+        face={editTarget ? editTarget.face : insertTarget?.face ?? null}
+        onInsert={confirmCommand}
       />
     </div>
   );
@@ -640,6 +721,7 @@ function CommandRow({
   line,
   diagnostics,
   onSelect,
+  onEdit,
   active,
   activeStart,
   activeEnd,
@@ -648,6 +730,8 @@ function CommandRow({
   line: CommandLine;
   diagnostics?: Diagnostic[];
   onSelect?: (lineIndex: number) => void;
+  /** 双击编辑该行所属的指令簇 */
+  onEdit?: (lineIndex: number) => void;
   active?: boolean;
   activeStart?: boolean;
   activeEnd?: boolean;
@@ -667,6 +751,7 @@ function CommandRow({
       data-round-bottom={activeEnd ? 'true' : undefined}
       data-focused={focusIndex === line.index ? 'true' : undefined}
       onClick={() => onSelect?.(line.index)}
+      onDoubleClick={() => onEdit?.(line.index)}
     >
       <span className="commandIndex">{line.index + 1}</span>
       <div
