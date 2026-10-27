@@ -9,6 +9,9 @@ interface Props {
   onSelect?: (lineIndex: number) => void;
   /** 该块是否属于当前选中的指令簇 */
   active?: boolean;
+  /** 该块是整块选择区的首 / 尾块：只圆外露的角 */
+  activeStart?: boolean;
+  activeEnd?: boolean;
   /** 焦点行（0 基下标）；不在本块内时为 null */
   focusIndex?: number | null;
 }
@@ -20,7 +23,14 @@ interface Props {
  *
  * 不做行内编辑：消息的参数需要专门的编辑器，后续再接入。
  */
-export default function MessageBlock({ lines, onSelect, active, focusIndex }: Props) {
+export default function MessageBlock({
+  lines,
+  onSelect,
+  active,
+  activeStart,
+  activeEnd,
+  focusIndex,
+}: Props) {
   // 一条指令就是一行：残留的换行符直接剔除，否则会多出视觉行、行号错位
   const displayLines = lines
     .map((line) => stripNewlines(line.text ?? ''))
@@ -49,6 +59,10 @@ export default function MessageBlock({ lines, onSelect, active, focusIndex }: Pr
           <div
             className="messageLine"
             data-line-index={lines[0].index}
+            data-round-top={activeStart ? 'true' : undefined}
+            data-round-bottom={
+              activeEnd && displayLines.length === 1 ? 'true' : undefined
+            }
             data-focused={focusIndex === lines[0].index ? 'true' : undefined}
           >
             <CommandIndent depth={lines[0].indent} />
@@ -61,6 +75,9 @@ export default function MessageBlock({ lines, onSelect, active, focusIndex }: Pr
               key={index}
               className="messageLine"
               data-line-index={lines[0].index + index + 1}
+              data-round-bottom={
+                activeEnd && index === displayLines.length - 2 ? 'true' : undefined
+              }
               data-focused={
                 focusIndex === lines[0].index + index + 1 ? 'true' : undefined
               }

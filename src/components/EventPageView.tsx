@@ -23,6 +23,7 @@ import {
   type CommandEnvironment,
   type Diagnostic,
 } from '../lib/commandSpec';
+import { selectionOutline, type SelectionBand } from '../lib/selectionShape';
 import CommandIndent from './CommandIndent';
 import CommandPicker from './CommandPicker';
 import CommentBlock from './CommentBlock';
@@ -97,6 +98,8 @@ export default function EventPageView({
   const [textSelecting, setTextSelecting] = useState(false);
   /** 自绘的整行选区带（每行一条，避免浏览器分段高亮造成缝隙与叠色） */
   const [selectionBands, setSelectionBands] = useState<SelectionBand[]>([]);
+  /** 所有色带合并出的外轮廓：凸角与凹角一起倒圆 */
+  const selectionShape = useMemo(() => selectionOutline(selectionBands, 2), [selectionBands]);
   const listRef = useRef<HTMLDivElement>(null);
 
   /** 每条指令所属的最小指令簇 */
@@ -516,26 +519,36 @@ export default function EventPageView({
           ref={listRef}
           data-text-selecting={textSelecting ? 'true' : undefined}
         >
-          {/* 自绘选区：整行一条色带，行与行严丝合缝，不做颜色叠加 */}
+          {/* 自绘选区：所有色带合并成一条外轮廓，凸角与凹角都倒圆 */}
           <div className="textSelectionLayer" aria-hidden="true">
-            {selectionBands.map((band, index) => (
-              <div key={index} className="textSelectionRect" style={band} />
-            ))}
+            {selectionShape && (
+              <svg
+                className="textSelectionShape"
+                width={selectionShape.width}
+                height={selectionShape.height}
+              >
+                <path d={selectionShape.d} />
+              </svg>
+            )}
           </div>
 
           {groupCommandLines(commands).map((row) => {
             // 文本块的簇是整块，取首行；闭合符/否则标记的簇落回外层块头
             const first = row.kind === 'command' ? row.line : row.lines[0];
             const last = row.kind === 'command' ? row.line : row.lines[row.lines.length - 1];
+            // 只有一行的簇不铺选择色，只留焦点行色
+            const active =
+              span !== null &&
+              span.start !== span.end &&
+              first.index >= span.start &&
+              last.index <= span.end;
             const rowProps = {
               // 点击哪一行，焦点就落在哪一行；选择区仍是该行所属的最小簇
               onSelect: (lineIndex: number) => selectRows(lineIndex, lineIndex, false),
-              // 只有一行的簇不铺选择色，只留焦点行色
-              active:
-                span !== null &&
-                span.start !== span.end &&
-                first.index >= span.start &&
-                last.index <= span.end,
+              active,
+              // 整块选择区的首尾行：只有这两行外露的角才是圆角，中间行拼成连续的一块
+              activeStart: active && first.index === span.start,
+              activeEnd: active && last.index === span.end,
               // 焦点行单独强调：多行文本块内部按行判断
               focusIndex:
                 selection !== null &&
@@ -581,6 +594,15 @@ export default function EventPageView({
                 ? 'true'
                 : undefined
             }
+            // 末尾行永远是选择区的下边界：只圆外露的两个下角
+            data-round-bottom={
+              selection !== null &&
+              span !== null &&
+              span.start !== span.end &&
+              (selection.anchor === commands.length || selection.focus === commands.length)
+                ? 'true'
+                : undefined
+            }
             data-focused={selection?.focus === commands.length ? 'true' : undefined}
             onClick={() => selectRows(commands.length, commands.length, false)}
           >
@@ -619,12 +641,16 @@ function CommandRow({
   diagnostics,
   onSelect,
   active,
+  activeStart,
+  activeEnd,
   focusIndex,
 }: {
   line: CommandLine;
   diagnostics?: Diagnostic[];
   onSelect?: (lineIndex: number) => void;
   active?: boolean;
+  activeStart?: boolean;
+  activeEnd?: boolean;
   focusIndex?: number | null;
 }) {
   // 指令 10 是可插入新代码的空行，标成 @> 提示插入点；> 用标点配色
@@ -637,6 +663,8 @@ function CommandRow({
       role="listitem"
       data-command-index={line.index}
       data-active={active ? 'true' : undefined}
+      data-round-top={activeStart ? 'true' : undefined}
+      data-round-bottom={activeEnd ? 'true' : undefined}
       data-focused={focusIndex === line.index ? 'true' : undefined}
       onClick={() => onSelect?.(line.index)}
     >
@@ -718,14 +746,6 @@ function toCommandPayload(line: CommandLine): CommandPayload {
     parameters: line.params,
     ...(line.text !== null ? { string: line.text } : {}),
   };
-}
-
-/** 自绘选区带：相对指令列表内容坐标的矩形 */
-interface SelectionBand {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
 }
 
 /** 文本节点是否属于行号栏（行号栏与文本编辑区完全独立，不参与划选与复制） */

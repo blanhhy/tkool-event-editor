@@ -1131,6 +1131,25 @@ button {
   background-color: rgb(62, 68, 81);
 }
 
+/*
+ * 选择色是连成一块的，只有整块外形上外露的角才是圆角：
+ * 首行的上角、尾行的下角。中间行与相邻行拼合，保持连续、不出现缺口。
+ * 焦点色仍是方角。
+ */
+.commandRow[data-active='true'][data-round-top='true'] > .commandContent,
+.commentBlock[data-active='true'] .commentLine[data-round-top='true'],
+.messageBlock[data-active='true'] .messageLine[data-round-top='true'] {
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+}
+
+.commandRow[data-active='true'][data-round-bottom='true'] > .commandContent,
+.commentBlock[data-active='true'] .commentLine[data-round-bottom='true'],
+.messageBlock[data-active='true'] .messageLine[data-round-bottom='true'] {
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
+}
+
 /* 焦点色用 background-image 叠加，不覆盖下面的选择色 */
 .commandRow[data-focused='true'] > .commandContent,
 .commentLine[data-focused='true'],
@@ -1234,10 +1253,18 @@ button {
   pointer-events: none;
 }
 
-.textSelectionRect {
+.textSelectionShape {
   position: absolute;
+  left: 0;
+  top: 0;
+  /* 路径可能超出滚动容器可视区，不能裁掉 */
+  overflow: visible;
+  pointer-events: none;
+}
+
+.textSelectionShape path {
   /* 与文本编辑器选区同色（oneDark #3E4451） */
-  background: rgb(62, 68, 81);
+  fill: rgb(62, 68, 81);
 }
 
 /* 行内容绘制在选区层之上 */
@@ -1393,10 +1420,22 @@ button {
   caret-color: #7fb0ff;
 }
 
-/* 文本选择高亮与 CodeMirror 编辑器保持一致（同一套选区颜色） */
+/* 文本域里的选区改由自绘轮廓显示（原生选区无法做圆角） */
 .commentInput::selection {
-  background: rgb(62, 68, 81);
+  background: transparent;
   color: inherit;
+}
+
+/* 行内编辑时的选区轮廓：与事件页、文本编辑器同一套倒圆规则 */
+.commentSelectionShape {
+  position: absolute;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.commentSelectionShape path {
+  fill: rgb(62, 68, 81);
 }
 
 /*

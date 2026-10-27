@@ -2,11 +2,12 @@ import { useEffect, useRef, type MutableRefObject } from 'react';
 import { basicSetup } from 'codemirror';
 import { undo, redo } from '@codemirror/commands';
 import { EditorState } from '@codemirror/state';
-import { EditorView, keymap } from '@codemirror/view';
+import { EditorView, ViewPlugin, keymap } from '@codemirror/view';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { json } from '@codemirror/lang-json';
 import { javascript } from '@codemirror/lang-javascript';
 import { extensionOf } from '../lib/file';
+import { selectionOutline, type SelectionBand } from '../lib/selectionShape';
 
 export interface TextEditorApi {
   undo: () => void;
@@ -44,6 +45,81 @@ function languageFor(name: string) {
   }
 }
 
+/**
+ * 选区画成一条合并外轮廓：相邻行连成一块，凸角与凹角一起倒圆。
+ * 几何直接复用 CodeMirror 自己算好的行盒（.cm-selectionLayer 里的矩形），
+ * 原生矩形只负责提供位置，视觉上隐藏。
+ */
+const roundedSelection = ViewPlugin.fromClass(
+  class {
+    private svg: SVGSVGElement;
+    private path: SVGPathElement;
+    private frame = 0;
+    private measure = { read: () => null, write: () => this.draw() };
+
+    constructor(private view: EditorView) {
+      const ns = 'http://www.w3.org/2000/svg';
+      this.svg = document.createElementNS(ns, 'svg');
+      this.svg.setAttribute('class', 'cm-roundedSelection');
+      this.path = document.createElementNS(ns, 'path');
+      this.svg.appendChild(this.path);
+      view.scrollDOM.appendChild(this.svg);
+      view.scrollDOM.addEventListener('scroll', this.schedule, { passive: true });
+      this.schedule();
+    }
+
+    update() {
+      this.schedule();
+    }
+
+    destroy() {
+      if (this.frame) cancelAnimationFrame(this.frame);
+      this.view.scrollDOM.removeEventListener('scroll', this.schedule);
+      this.svg.remove();
+    }
+
+    /** 等 CodeMirror 本次测量写入行盒后再取几何，避免读到上一帧的选区 */
+    private schedule = () => {
+      if (this.frame) return;
+      this.frame = requestAnimationFrame(() => {
+        this.frame = 0;
+        this.view.requestMeasure(this.measure);
+      });
+    };
+
+    private draw() {
+      const layer = this.view.scrollDOM.querySelector('.cm-selectionLayer');
+      const bands: SelectionBand[] = [];
+
+      if (layer) {
+        for (const node of Array.from(layer.children)) {
+          const element = node as HTMLElement;
+          if (!element.classList.contains('cm-selectionBackground')) continue;
+
+          const left = parseFloat(element.style.left);
+          const top = parseFloat(element.style.top);
+          const width = parseFloat(element.style.width);
+          const height = parseFloat(element.style.height);
+          if (![left, top, width, height].every(Number.isFinite)) continue;
+          if (width <= 0 || height <= 0) continue;
+          bands.push({ left, top, width, height });
+        }
+      }
+
+      const shape = selectionOutline(bands, 2);
+      if (!shape) {
+        this.svg.style.display = 'none';
+        return;
+      }
+
+      this.svg.style.display = '';
+      this.svg.setAttribute('width', String(shape.width));
+      this.svg.setAttribute('height', String(shape.height));
+      this.path.setAttribute('d', shape.d);
+    }
+  },
+);
+
 const appTheme = EditorView.theme({
   '&': {
     height: '100%',
@@ -69,7 +145,24 @@ const appTheme = EditorView.theme({
   '.cm-content': {
     caretColor: '#7fb0ff',
   },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+    backgroundColor: 'rgba(95, 145, 220, 0.28)',
+  },
+  // 原生选区矩形只用来提供几何信息，实际由自绘轮廓显示（见 roundedSelection）
+  '.cm-selectionLayer': {
+    opacity: '0',
+  },
+  '.cm-roundedSelection': {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    zIndex: '-2',
+    pointerEvents: 'none',
+  },
+  '.cm-roundedSelection path': {
+    fill: 'rgb(62, 68, 81)',
+  },
+  '::selection': {
     backgroundColor: 'rgba(95, 145, 220, 0.28)',
   },
 }, { dark: true });
@@ -152,6 +245,7 @@ export default function TextEditor({
         basicSetup,
         oneDark,
         appTheme,
+        roundedSelection,
         EditorState.readOnly.of(readOnly),
         EditorView.editable.of(!readOnly),
         keymap.of([

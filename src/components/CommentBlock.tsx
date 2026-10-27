@@ -7,6 +7,7 @@ import {
   type MouseEvent,
 } from 'react';
 import { stripNewlines, type CommandLine } from '../lib/eventCommands';
+import { selectionOutline, type SelectionBand } from '../lib/selectionShape';
 import CommandIndent from './CommandIndent';
 
 interface Props {
@@ -18,6 +19,9 @@ interface Props {
   onSelect?: (lineIndex: number) => void;
   /** 该块是否属于当前选中的指令簇 */
   active?: boolean;
+  /** 该块是整块选择区的首 / 尾块：只圆外露的角 */
+  activeStart?: boolean;
+  activeEnd?: boolean;
   /** 焦点行（0 基下标）；不在本块内时为 null */
   focusIndex?: number | null;
   /** 整页指令条数，用于判断上下相邻是否还有指令 */
@@ -36,6 +40,8 @@ export default function CommentBlock({
   onSave,
   onSelect,
   active,
+  activeStart,
+  activeEnd,
   focusIndex,
   commandCount,
 }: Props) {
@@ -49,6 +55,15 @@ export default function CommentBlock({
   /** 进入编辑时的文本，Esc 时用它撤销这次编辑 */
   const beforeEditRef = useRef(original);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  /** 行内编辑时文本域里选区的自绘轮廓（原生选区无法做圆角） */
+  const [editShape, setEditShape] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    d: string;
+  } | null>(null);
 
   // 外部内容变化（切换事件页 / 刷新 / 内存写回）时同步；编辑中不打断输入
   useEffect(() => {
@@ -77,6 +92,7 @@ export default function CommentBlock({
       // 草稿里新加的行还没有对应的指令，先落到最后一条真实行上
       const next = Math.min(line, lines[lines.length - 1].index);
       if (next !== focusIndex) onSelect?.(next);
+      setEditShape(measureTextareaSelection(input, contentRef.current));
     };
 
     document.addEventListener('selectionchange', sync);
@@ -126,6 +142,7 @@ export default function CommentBlock({
       setDraft(beforeEditRef.current);
       onSave?.(beforeEditRef.current);
     }
+    setEditShape(null);
     setEditing(false);
   }
 
@@ -207,14 +224,26 @@ export default function CommentBlock({
           ))}
         </div>
 
-        <div className="commandContent commentContent">
-          {/* 编辑态：整块是一个文本域，用一条色带标出光标所在行（只覆盖内容区） */}
+        <div className="commandContent commentContent" ref={contentRef}>
+          {/* 编辑态：整块是一个文本域，用一条色带标出焦点行（只覆盖内容区） */}
           {editing && focusLine !== null && (
             <div
               className="editFocusBand"
               style={{ '--focus-line': String(focusLine) } as CSSProperties}
               aria-hidden="true"
             />
+          )}
+          {/* 文本域里的选区也合并成一条外轮廓，凸角与凹角都倒圆 */}
+          {editing && editShape && (
+            <svg
+              className="commentSelectionShape"
+              style={{ left: editShape.left, top: editShape.top }}
+              width={editShape.width}
+              height={editShape.height}
+              aria-hidden="true"
+            >
+              <path d={editShape.d} />
+            </svg>
           )}
           {editing ? (
             <div className="commentLine commentEditLine" onClick={() => inputRef.current?.focus()}>
@@ -232,6 +261,7 @@ export default function CommentBlock({
                 onMouseUp={(event) => {
                   if (event.button !== 0) return;
                   onSelect?.(clickedFocusLine(event.clientY));
+                  setEditShape(measureTextareaSelection(event.currentTarget, contentRef.current));
                 }}
                 onBlur={() => stopEditing()}
                 onKeyDown={(event) => {
@@ -276,6 +306,10 @@ export default function CommentBlock({
               <div
                 className="commentLine"
                 data-line-index={lines[0].index}
+                data-round-top={activeStart ? 'true' : undefined}
+                data-round-bottom={
+                  activeEnd && displayLines.length === 1 ? 'true' : undefined
+                }
                 data-focused={focusIndex === lines[0].index ? 'true' : undefined}
               >
                 <CommandIndent depth={lines[0].indent} />
@@ -288,6 +322,9 @@ export default function CommentBlock({
                   key={index}
                   className="commentLine"
                   data-line-index={lines[0].index + index + 1}
+                  data-round-bottom={
+                    activeEnd && index === displayLines.length - 2 ? 'true' : undefined
+                  }
                   data-focused={
                     focusIndex === lines[0].index + index + 1 ? 'true' : undefined
                   }
@@ -356,4 +393,98 @@ function caretRangeAt(x: number, y: number): { node: Node; offset: number } | nu
 
   const position = doc.caretPositionFromPoint?.(x, y);
   return position ? { node: position.offsetNode, offset: position.offset } : null;
+}
+
+/**
+ * 文本域里选区的外轮廓。
+ * 文本域的选区不进入文档 Selection，拿不到几何，只能用同版式的镜像元素量出
+ * 每行片段，再合并成一条带圆角的外轮廓（原生 ::selection 做不了圆角）。
+ */
+function measureTextareaSelection(
+  input: HTMLTextAreaElement,
+  container: HTMLElement | null,
+): { left: number; top: number; width: number; height: number; d: string } | null {
+  if (!container || input.selectionStart === input.selectionEnd) return null;
+
+  const style = window.getComputedStyle(input);
+  const mirror = document.createElement('div');
+  mirror.setAttribute('aria-hidden', 'true');
+  Object.assign(mirror.style, {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    margin: '0',
+    padding: '0',
+    border: '0',
+    width: `${input.clientWidth}px`,
+    fontFamily: style.fontFamily,
+    fontSize: style.fontSize,
+    fontWeight: style.fontWeight,
+    fontStyle: style.fontStyle,
+    lineHeight: style.lineHeight,
+    letterSpacing: style.letterSpacing,
+    wordSpacing: style.wordSpacing,
+    whiteSpace: 'pre-wrap',
+    wordBreak: style.wordBreak,
+    overflowWrap: style.overflowWrap,
+    tabSize: style.tabSize,
+    visibility: 'hidden',
+    pointerEvents: 'none',
+  });
+  mirror.textContent = input.value;
+  document.body.appendChild(mirror);
+
+  try {
+    const start = textOffsetPosition(mirror, input.selectionStart);
+    const end = textOffsetPosition(mirror, input.selectionEnd);
+    if (!start || !end) return null;
+
+    const range = document.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+
+    const mirrorRect = mirror.getBoundingClientRect();
+    const lineHeight = parseFloat(style.lineHeight) || mirrorRect.height;
+    const bands: SelectionBand[] = [];
+
+    for (const rect of Array.from(range.getClientRects())) {
+      if (rect.width <= 0.5 || rect.height <= 0.5) continue;
+      // 纵向对齐到整行：不同片段的高度差不会在行间留下缝隙
+      const row = Math.round((rect.top - mirrorRect.top) / lineHeight);
+      const top = Math.round(row * lineHeight);
+      bands.push({
+        left: Math.round(rect.left - mirrorRect.left),
+        width: Math.round(rect.width),
+        top,
+        height: Math.round((row + 1) * lineHeight) - top,
+      });
+    }
+
+    const shape = selectionOutline(bands, 2);
+    if (!shape) return null;
+
+    const inputRect = input.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    return {
+      left: Math.round(inputRect.left - containerRect.left),
+      top: Math.round(inputRect.top - containerRect.top),
+      width: shape.width,
+      height: shape.height,
+      d: shape.d,
+    };
+  } finally {
+    mirror.remove();
+  }
+}
+
+/** 在元素内按字符偏移定位文本节点 */
+function textOffsetPosition(root: Node, offset: number): { node: Text; offset: number } | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let remaining = offset;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node as Text;
+    if (remaining <= text.data.length) return { node: text, offset: remaining };
+    remaining -= text.data.length;
+  }
+  return null;
 }
