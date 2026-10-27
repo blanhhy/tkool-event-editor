@@ -79,7 +79,10 @@ import {
   collectTextLines,
   listSearchablePages,
   searchPages,
+  type SearchGroup,
+  type SearchMatch,
   type SearchPageEntry,
+  type TextLine,
 } from './lib/eventSearch';
 import { saveRecentProject, type RecentProject } from './lib/recent';
 import { INDENT_COLORS, SYNTAX_COLORS } from './lib/codeTheme';
@@ -158,6 +161,15 @@ export default function App() {
   const [searchEpoch, setSearchEpoch] = useState(0);
   const searchIndexRef = useRef<{ key: string; entries: SearchPageEntry[] } | null>(null);
   const searchBuildRef = useRef(0);
+  /** 搜索结果跳转目标：打开对应事件页后滚动到该行并选中关键词 */
+  const [revealTarget, setRevealTarget] = useState<{
+    path: string;
+    index: number;
+    offset: number;
+    length: number;
+    seq: number;
+  } | null>(null);
+  const revealSeqRef = useRef(0);
   const [eventsOpen, setEventsOpen] = useState(true);
   const [catalog, setCatalog] = useState<EventCatalog>(emptyCatalog);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -516,6 +528,25 @@ export default function App() {
       void loadEventTab(path, page.ref);
     },
     [root, tabs, loadEventTab],
+  );
+
+  /** 双击搜索结果：打开对应事件页并定位到匹配行 */
+  const openSearchMatch = useCallback(
+    (group: SearchGroup, match: SearchMatch) => {
+      openEventPage(
+        { ref: group.ref, index: group.ref.pageIndex + 1, trigger: null },
+        group.name,
+      );
+      revealSeqRef.current += 1;
+      setRevealTarget({
+        path: `event:${pageKey(group.ref)}`,
+        index: match.commandIndex,
+        offset: match.offset,
+        length: match.length,
+        seq: revealSeqRef.current,
+      });
+    },
+    [openEventPage],
   );
 
   /** 刷新事件树与已打开的事件页：丢弃解析缓存后重新从磁盘读取 */
@@ -1299,7 +1330,7 @@ export default function App() {
     if (!searchQuery.trim() || !searchIndex || searchIndex.key !== searchIndexKey) return [];
     if (searchIndex.entries.length === 0) return [];
 
-    const inMemory = new Map<string, string[]>();
+    const inMemory = new Map<string, TextLine[]>();
     for (const tab of tabs) {
       if (tab.kind === 'event' && tab.eventPage && tab.commands) {
         inMemory.set(pageKey(tab.eventPage), collectTextLines(tab.commands));
@@ -1528,7 +1559,7 @@ export default function App() {
                     (searchGroups.length === 0 ? (
                       <div className="searchHint">未找到结果</div>
                     ) : (
-                      <SearchResults groups={searchGroups} />
+                      <SearchResults groups={searchGroups} onOpenMatch={openSearchMatch} />
                     ))}
                 </div>
               </SidePanelSection>
@@ -1655,6 +1686,16 @@ export default function App() {
           onCopyCommands={storeCommandClipboard}
           commandEnvironment={commandEnvironment}
           projectRoot={root}
+          reveal={
+            revealTarget && activeTab === revealTarget.path
+              ? {
+                  index: revealTarget.index,
+                  offset: revealTarget.offset,
+                  length: revealTarget.length,
+                  seq: revealTarget.seq,
+                }
+              : null
+          }
         />
       </div>
 

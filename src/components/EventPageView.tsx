@@ -68,6 +68,8 @@ interface Props {
   onDeleteCommands?: (indices: number[]) => void;
   /** 文本选区恰好覆盖完整指令簇时，把指令 JSON 同步给剪贴板（供之后粘贴） */
   onCopyCommands?: (json: string) => void;
+  /** 外部跳转：滚动到指定指令行并选中关键词；seq 用于区分同一行的重复跳转 */
+  reveal?: { index: number; offset: number; length: number; seq: number } | null;
 }
 
 export default function EventPageView({
@@ -85,6 +87,7 @@ export default function EventPageView({
   onReplaceCommands,
   onDeleteCommands,
   onCopyCommands,
+  reveal,
 }: Props) {
   /** 打开指令选择弹窗时记录的目标位置；null 表示弹窗关闭 */
   const [insertTarget, setInsertTarget] = useState<
@@ -490,6 +493,32 @@ export default function EventPageView({
       list.scrollTop = bottom - list.clientHeight;
     }
   }, [focusRow]);
+
+  /** 已处理的外部跳转序号；指令加载完成后才真正定位 */
+  const lastRevealRef = useRef(0);
+  useEffect(() => {
+    if (!reveal || commands.length === 0) return;
+    if (lastRevealRef.current === reveal.seq) return;
+    lastRevealRef.current = reveal.seq;
+
+    const index = Math.min(Math.max(reveal.index, 0), commands.length - 1);
+    const list = listRef.current;
+    if (!list) return;
+
+    // 行号栏里也有 data-line-index，跳到真正的行元素
+    const line = Array.from(
+      list.querySelectorAll<HTMLElement>(
+        `[data-line-index="${index}"], [data-command-index="${index}"]`,
+      ),
+    ).find((element) => !element.closest('.commandIndex'));
+    if (!line) return;
+
+    // 只选中关键词，不改动事件页自身的焦点 / 选择区
+    selectKeywordInLine(line, commands[index]?.text ?? '', reveal.offset, reveal.length);
+
+    // 定位行尽量停在视口中间；上下空间不足时由滚动容器自动贴边
+    line.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }, [reveal, commands.length]);
 
   // 选中后可用方向键移动：焦点行始终逐行移动，Shift 时选择区按簇扩展
   useEffect(() => {
@@ -989,6 +1018,52 @@ function boundaryLine(node: Node, direction: 'start' | 'end'): HTMLElement | nul
 /** 行元素对应的指令下标 */
 function lineIndexOf(line: HTMLElement): number {
   return Number(line.dataset.lineIndex ?? line.dataset.commandIndex);
+}
+
+/**
+ * 在行元素里选中关键词（只建立原生文本选区，不改事件页的焦点 / 选择区）。
+ * 优先定位包含整条指令文本的节点，避免把指令名里的同名字样选进来。
+ */
+function selectKeywordInLine(
+  line: HTMLElement,
+  content: string,
+  offset: number,
+  length: number,
+): boolean {
+  const keyword = content.slice(offset, offset + length);
+  if (!keyword) return false;
+
+  let fallback: { node: Text; start: number } | null = null;
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node as Text;
+    if (!text.data) continue;
+    if (text.parentElement?.closest('.commandIndex')) continue;
+
+    const whole = content ? text.data.indexOf(content) : -1;
+    if (whole !== -1) return applyKeywordRange(text, whole + offset, length);
+
+    const at = text.data.indexOf(keyword);
+    if (at !== -1 && !fallback) fallback = { node: text, start: at };
+  }
+
+  return fallback ? applyKeywordRange(fallback.node, fallback.start, length) : false;
+}
+
+function applyKeywordRange(node: Text, start: number, length: number): boolean {
+  const end = Math.min(node.data.length, start + length);
+  if (start < 0 || start >= end) return false;
+
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, end);
+
+  const selection = window.getSelection();
+  if (!selection) return false;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
 }
 
 /**

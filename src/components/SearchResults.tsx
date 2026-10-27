@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { buildMatchExcerpt, type SearchGroup } from '../lib/eventSearch';
+import { buildMatchExcerpt, type SearchGroup, type SearchMatch } from '../lib/eventSearch';
 import { pageKey } from '../lib/events';
 import FileTypeIcon from './FileTypeIcon';
 import { ChevronIcon } from './icons';
 
 interface Props {
   groups: SearchGroup[];
+  /** 单击匹配行：打开对应事件页并定位到该行 */
+  onOpenMatch: (group: SearchGroup, match: SearchMatch) => void;
 }
 
 /** 搜索结果：按页分组，组内展示匹配行的单行节选 */
-export default function SearchResults({ groups }: Props) {
+export default function SearchResults({ groups, onOpenMatch }: Props) {
   /** 收起的页（默认全部展开） */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -48,9 +50,14 @@ export default function SearchResults({ groups }: Props) {
             {open && (
               <ul className="searchMatches">
                 {group.matches.map((match, index) => {
-                  const excerpt = buildMatchExcerpt(match.text, match.index, match.length);
+                  const excerpt = buildMatchExcerpt(match.text, match.offset, match.length);
                   return (
-                    <li key={index} className="searchMatch" title={match.text}>
+                    <li
+                      key={index}
+                      className="searchMatch"
+                      title={match.text}
+                      onClick={() => onOpenMatch(group, match)}
+                    >
                       <span className="searchMatchDot" />
                       <span className="searchMatchText">
                         {excerpt.before}

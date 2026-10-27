@@ -76,6 +76,8 @@ interface Props {
   commandEnvironment?: CommandEnvironment;
   /** 工程目录：事件指令参数面板的渲染预览需要读取工程素材 */
   projectRoot?: FileSystemDirectoryHandle | null;
+  /** 外部跳转到事件页的指定指令行并选中关键词（来自搜索结果） */
+  reveal?: { index: number; offset: number; length: number; seq: number } | null;
 }
 
 const DRAG_TYPE = 'application/x-tkool-file';
@@ -99,6 +101,7 @@ export default function EditorArea({
   onEventSelectionChange,
   commandEnvironment,
   projectRoot,
+  reveal,
 }: Props) {
   const active = tabs.find((tab) => tab.path === activeId) ?? null;
   const [dropActive, setDropActive] = useState(false);
@@ -237,6 +240,7 @@ export default function EditorArea({
             onSelectionChange={onEventSelectionChange}
             environment={eventEnvironment}
             projectRoot={projectRoot}
+            reveal={reveal}
           />
         )}
 

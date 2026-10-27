@@ -7,6 +7,13 @@ import {
   type EventPageRef,
 } from './events';
 
+/** 索引中的一行文本：对应事件页里的一条指令 */
+export interface TextLine {
+  /** 指令在事件页指令数组中的下标 */
+  commandIndex: number;
+  text: string;
+}
+
 /** 搜索索引中的一页：页的展示名、路径与该页全部文本行 */
 export interface SearchPageEntry {
   ref: EventPageRef;
@@ -14,13 +21,16 @@ export interface SearchPageEntry {
   name: string;
   /** CExxxx / MAPxxxx/EVxxxx/Px / Troopxxxx/Px */
   path: string;
-  lines: string[];
+  lines: TextLine[];
 }
 
-/** 一页内的匹配：行文本、匹配位置与长度 */
+/** 一页内的匹配：所在指令、行文本、匹配位置与长度 */
 export interface SearchMatch {
+  /** 匹配行对应的指令下标（用于跳转到事件页的对应行） */
+  commandIndex: number;
   text: string;
-  index: number;
+  /** 匹配在行内的起始位置 */
+  offset: number;
   length: number;
 }
 
@@ -78,11 +88,11 @@ export function listSearchablePages(catalog: EventCatalog): SearchablePage[] {
  * 每条指令携带的字符串即一个文本行；消息 / 注释的续行本身也是独立指令，
  * 因此同一个文本块的多行会各自成为一行，节选只在行内进行。
  */
-export function collectTextLines(commands: EventCommand[]): string[] {
-  const lines: string[] = [];
-  for (const command of commands) {
-    if (command.string) lines.push(command.string);
-  }
+export function collectTextLines(commands: EventCommand[]): TextLine[] {
+  const lines: TextLine[] = [];
+  commands.forEach((command, commandIndex) => {
+    if (command.string) lines.push({ commandIndex, text: command.string });
+  });
   return lines;
 }
 
@@ -94,10 +104,15 @@ export function searchPages(entries: SearchPageEntry[], query: string): SearchGr
   const groups: SearchGroup[] = [];
   for (const entry of entries) {
     const matches: SearchMatch[] = [];
-    for (const text of entry.lines) {
-      const index = text.toLowerCase().indexOf(needle);
-      if (index === -1) continue;
-      matches.push({ text, index, length: needle.length });
+    for (const line of entry.lines) {
+      const offset = line.text.toLowerCase().indexOf(needle);
+      if (offset === -1) continue;
+      matches.push({
+        commandIndex: line.commandIndex,
+        text: line.text,
+        offset,
+        length: needle.length,
+      });
     }
     if (matches.length > 0) groups.push({ ...entry, matches });
   }
@@ -107,16 +122,16 @@ export function searchPages(entries: SearchPageEntry[], query: string): SearchGr
 /** 截取匹配附近的一小段文本，用于侧栏单行展示（超出部分以省略号表示） */
 export function buildMatchExcerpt(
   text: string,
-  index: number,
+  offset: number,
   length: number,
   before = 10,
   after = 30,
 ): MatchExcerpt {
-  const start = Math.max(0, index - before);
-  const end = Math.min(text.length, index + length + after);
+  const start = Math.max(0, offset - before);
+  const end = Math.min(text.length, offset + length + after);
   return {
-    before: `${start > 0 ? '…' : ''}${text.slice(start, index)}`,
-    match: text.slice(index, index + length),
-    after: `${text.slice(index + length, end)}${end < text.length ? '…' : ''}`,
+    before: `${start > 0 ? '…' : ''}${text.slice(start, offset)}`,
+    match: text.slice(offset, offset + length),
+    after: `${text.slice(offset + length, end)}${end < text.length ? '…' : ''}`,
   };
 }
