@@ -463,9 +463,6 @@ function TreeRow({
               onDragStartFile={onDragStartFile}
             />
           ))}
-          {children?.length === 0 && (
-            <div className="treeHint" style={{ paddingLeft: 6 + (depth + 1) * 14 }}>空目录</div>
-          )}
         </>
       )}
     </>

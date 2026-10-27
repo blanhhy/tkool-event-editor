@@ -21,6 +21,8 @@ const TEXT_EXTENSIONS = new Set([
   'log',
   'yml',
   'yaml',
+  'r3proj',
+  'bat',
 ]);
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg']);

@@ -16,6 +16,7 @@ import mapIcon from '../assets/jetbrains-icons/map.svg?raw';
 import objectIcon from '../assets/jetbrains-icons/object.svg?raw';
 import packageIcon from '../assets/jetbrains-icons/package.svg?raw';
 import propertiesIcon from '../assets/jetbrains-icons/properties.svg?raw';
+import shellIcon from '../assets/jetbrains-icons/shell.svg?raw';
 import sqlIcon from '../assets/jetbrains-icons/sql.svg?raw';
 import tableIcon from '../assets/jetbrains-icons/table.svg?raw';
 import textIcon from '../assets/jetbrains-icons/text.svg?raw';
@@ -44,6 +45,7 @@ const ICONS = {
   object: objectIcon,
   package: packageIcon,
   properties: propertiesIcon,
+  shell: shellIcon,
   sql: sqlIcon,
   table: tableIcon,
   text: textIcon,
@@ -63,6 +65,9 @@ const ICON_BY_EXT: Record<string, IconKey> = {
   txt: 'text',
   log: 'text',
   nfo: 'text',
+  bat: 'shell',
+  cmd: 'shell',
+  sh: 'shell',
   md: 'markdown',
   markdown: 'markdown',
   json: 'json',
@@ -149,6 +154,13 @@ const ICON_BY_EXT: Record<string, IconKey> = {
   rpg2003: 'binary',
   exe: 'binary',
   dll: 'binary',
+  lib: 'binary',
+  so: 'binary',
+  dylib: 'binary',
+  a: 'binary',
+  o: 'binary',
+  obj: 'binary',
+  bin: 'binary',
   rvdata2: 'binary',
   rvdata: 'binary',
   lsd: 'binary',
