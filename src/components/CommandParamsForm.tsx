@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Engine } from '../lib/environment';
 import { Cmd } from '../lib/commandCodes';
 import {
@@ -9,6 +9,7 @@ import {
   type CommandFormModel,
 } from '../lib/commandForm';
 import type { CommandDraft, FaceGraphicState } from '../lib/eventCommands';
+import { MESSAGE_LIMITS, textFitsCommandLimits } from '../lib/eventCommands';
 import {
   COMMAND_DIALOGS,
   type DialogField,
@@ -59,6 +60,53 @@ export default function CommandParamsForm({
   // 未建模的指令只剩「原始参数」输入框，同样用原参数回填
   const [raw, setRaw] = useState(() => initial?.parameters.join(' ') ?? '');
 
+  const textEnabled = !!spec?.text || model.usesText;
+  const textLabel = spec?.text?.label ?? '文本';
+
+  /**
+   * 显示文字的严格限制：最多 4 行、每行最多 64 半角（全角按 2 计）。
+   * 会让内容超限的输入直接拒绝；已经被历史数据撑破的内容允许继续编辑（否则无法修掉）。
+   */
+  const messageLimits = code === Cmd.ShowMessage ? MESSAGE_LIMITS : null;
+  /** 拒绝输入时给提示：边框变红（data-reject）+ 左右震动（Web Animations，可反复重播） */
+  const [rejected, setRejected] = useState(false);
+  const rejectTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (rejectTimer.current !== null) window.clearTimeout(rejectTimer.current);
+    },
+    [],
+  );
+
+  const flashReject = (element: HTMLTextAreaElement) => {
+    element.animate(
+      [
+        { transform: 'translateX(0)' },
+        { transform: 'translateX(-4px)' },
+        { transform: 'translateX(4px)' },
+        { transform: 'translateX(-3px)' },
+        { transform: 'translateX(0)' },
+      ],
+      { duration: 260, easing: 'ease-in-out' },
+    );
+    setRejected(true);
+    if (rejectTimer.current !== null) window.clearTimeout(rejectTimer.current);
+    rejectTimer.current = window.setTimeout(() => setRejected(false), 320);
+  };
+
+  const applyText = (next: string, element: HTMLTextAreaElement) => {
+    if (messageLimits && textFitsCommandLimits(text, messageLimits)) {
+      if (!textFitsCommandLimits(next, messageLimits)) {
+        // 不更新状态，并把控件恢复成当前值（React 此时不会重渲染）
+        element.value = text;
+        flashReject(element);
+        return;
+      }
+    }
+    setText(next);
+  };
+
   const setParam = (p: number, rawValue: number, min?: number, max?: number) => {
     setValues((prev) => {
       const next = [...prev];
@@ -82,9 +130,6 @@ export default function CommandParamsForm({
     onConfirm({ code, parameters, text: textEnabled ? text : undefined });
   };
 
-  const textEnabled = !!spec?.text || model.usesText;
-  const textLabel = spec?.text?.label ?? '文本';
-
   return (
     <div className="commandDialog">
       <div className="commandDialogTitle">
@@ -104,7 +149,8 @@ export default function CommandParamsForm({
                 rows={spec?.text?.rows ?? 3}
                 value={text}
                 spellCheck={false}
-                onChange={(event) => setText(event.target.value)}
+                data-reject={rejected ? 'true' : undefined}
+                onChange={(event) => applyText(event.target.value, event.currentTarget)}
               />
             )}
           </div>
