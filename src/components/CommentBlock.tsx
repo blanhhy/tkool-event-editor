@@ -102,8 +102,14 @@ export default function CommentBlock({
       setEditShape(measureTextareaSelection(input, contentRef.current));
     };
 
+    // 文本域的 selectionchange 直接派发在元素上，不冒泡到 document；
+    // 只听 document 的话拖动划选期间收不到更新，高亮要等松开鼠标才出现
+    input.addEventListener('selectionchange', sync);
     document.addEventListener('selectionchange', sync);
-    return () => document.removeEventListener('selectionchange', sync);
+    return () => {
+      input.removeEventListener('selectionchange', sync);
+      document.removeEventListener('selectionchange', sync);
+    };
   }, [editing, focusIndex, lines, onSelect]);
 
   // 焦点行是注释行时，按 Enter 进入编辑，光标落在该行行尾
