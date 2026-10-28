@@ -68,6 +68,8 @@ interface Props {
   onDeleteCommands?: (tab: EditorTab, indices: number[]) => void;
   /** 文本选区对齐到完整簇时复制的指令 JSON（同步给粘贴用的剪贴板） */
   onCopyCommands?: (json: string) => void;
+  /** 已复制的指令 JSON：事件页右键菜单的「粘贴」据此启用 */
+  commandClipboard?: string | null;
   /** 事件页指令操作接口（复制 / 剪切 / 粘贴） */
   eventApiRef?: MutableRefObject<EventPageApi | null>;
   /** 事件页选择区变化 */
@@ -99,6 +101,7 @@ export default function EditorArea({
   onReplaceCommands,
   onDeleteCommands,
   onCopyCommands,
+  commandClipboard,
   eventApiRef,
   onEventSelectionChange,
   commandEnvironment,
@@ -239,6 +242,7 @@ export default function EditorArea({
             }
             onDeleteCommands={(indices) => onDeleteCommands?.(active, indices)}
             onCopyCommands={onCopyCommands}
+            clipboard={commandClipboard}
             apiRef={eventApiRef}
             onSelectionChange={onEventSelectionChange}
             environment={eventEnvironment}

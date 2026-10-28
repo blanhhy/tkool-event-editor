@@ -1688,6 +1688,7 @@ export default function App() {
           }
           onDeleteCommands={deleteEventCommands}
           onCopyCommands={storeCommandClipboard}
+          commandClipboard={commandClipboard}
           commandEnvironment={commandEnvironment}
           projectRoot={root}
           systemGraphic={systemGraphic}

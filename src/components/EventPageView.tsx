@@ -33,6 +33,7 @@ import { selectionOutline, type SelectionBand } from '../lib/selectionShape';
 import CommandIndent from './CommandIndent';
 import CommandPicker from './CommandPicker';
 import CommentBlock from './CommentBlock';
+import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import DiagnosticMark from './DiagnosticMark';
 import InsertButton from './InsertButton';
 import MessageBlock from './MessageBlock';
@@ -72,6 +73,8 @@ interface Props {
   onDeleteCommands?: (indices: number[]) => void;
   /** 文本选区恰好覆盖完整指令簇时，把指令 JSON 同步给剪贴板（供之后粘贴） */
   onCopyCommands?: (json: string) => void;
+  /** 系统剪贴板里已复制的指令 JSON；为空时右键菜单的「粘贴」不可用 */
+  clipboard?: string | null;
   /** 外部跳转：滚动到指定指令行并选中关键词；seq 用于区分同一行的重复跳转 */
   reveal?: { index: number; offset: number; length: number; seq: number } | null;
 }
@@ -92,6 +95,7 @@ export default function EventPageView({
   onReplaceCommands,
   onDeleteCommands,
   onCopyCommands,
+  clipboard,
   reveal,
 }: Props) {
   /** 打开指令选择弹窗时记录的目标位置；null 表示弹窗关闭 */
@@ -126,6 +130,15 @@ export default function EventPageView({
   } | null>(null);
   /** 是否有原生文本选区（鼠标划选文字时隐藏块状的簇高亮，只保留浏览器选区） */
   const [textSelecting, setTextSelecting] = useState(false);
+  /**
+   * 右键菜单：位置与基准行。index 为右键位置所在的行，
+   * 等于 commands.length 表示页尾空行（没有对应指令）。
+   */
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    index: number;
+  } | null>(null);
   /** 自绘的整行选区带（每行一条，避免浏览器分段高亮造成缝隙与叠色） */
   const [selectionBands, setSelectionBands] = useState<SelectionBand[]>([]);
   /** 所有色带合并出的外轮廓：凸角与凹角一起倒圆 */
@@ -616,6 +629,75 @@ export default function EventPageView({
     .flat()
     .filter((item) => item.severity === 'error').length;
 
+  /**
+   * 右键菜单：一律以右键位置所在的簇为基准。
+   * 不能执行的操作直接禁用（判断与复制 / 删除的实际规则一致），而不是点了才失败。
+   */
+  const menuCluster =
+    contextMenu && contextMenu.index < commands.length
+      ? clusters.get(contextMenu.index) ?? null
+      : null;
+  const menuHead = menuCluster ? menuCluster.index : contextMenu?.index ?? commands.length;
+  const menuEditable =
+    menuCluster !== null && commands[menuCluster.index]?.code !== Cmd.End && !!onReplaceCommands;
+  const menuCanCopy = selectedIndices.length > 0;
+  const menuCanPaste = !!clipboard && !!onReplaceCommands;
+
+  const contextItems: ContextMenuItem[] = contextMenu
+    ? [
+        {
+          id: 'insert',
+          label: '插入',
+          disabled: !onReplaceCommands,
+          onSelect: () => beginInsertAt(menuHead, menuCluster?.indent ?? 0),
+        },
+        {
+          id: 'edit',
+          label: '编辑',
+          disabled: !menuEditable,
+          onSelect: () => editClusterAt(contextMenu.index),
+        },
+        {
+          id: 'copy',
+          label: '复制',
+          separatorBefore: true,
+          disabled: !menuCanCopy,
+          onSelect: () => {
+            const json = copySelection();
+            if (json) onCopyCommands?.(json);
+          },
+        },
+        {
+          id: 'cut',
+          label: '剪切',
+          disabled: !menuCanCopy || !onDeleteCommands,
+          onSelect: () => {
+            const json = cutSelection();
+            if (json) onCopyCommands?.(json);
+          },
+        },
+        {
+          id: 'paste',
+          label: '粘贴',
+          disabled: !menuCanPaste,
+          onSelect: () => {
+            if (clipboard) pasteSelection(clipboard);
+          },
+        },
+        {
+          id: 'delete',
+          label: '删除',
+          separatorBefore: true,
+          disabled: !menuCanCopy || !onDeleteCommands,
+          onSelect: () => {
+            if (!span || selectedIndices.length === 0 || !onDeleteCommands) return;
+            pendingSelection.current = { anchor: span.start, focus: span.start };
+            onDeleteCommands(selectedIndices);
+          },
+        },
+      ]
+    : [];
+
   return (
     <div className="eventPageView">
       <div className="eventPageHeader">
@@ -643,6 +725,34 @@ export default function EventPageView({
           role="list"
           ref={listRef}
           data-text-selecting={textSelecting ? 'true' : undefined}
+          // 页面较短时，页尾空行下方也是容器的空白：点它等同于点页尾空行
+          onClick={(event) => {
+            if (event.target !== event.currentTarget) return;
+            // 从文字拖选到这里松手时保留原有选区，不切换焦点
+            const native = window.getSelection();
+            if (native && !native.isCollapsed) return;
+            selectRows(commands.length, commands.length, false);
+          }}
+          onContextMenu={(event) => {
+            const target = event.target as HTMLElement | null;
+            // 注释行内编辑的文本域保留自己的右键行为
+            if (target?.closest('textarea, input')) return;
+            event.preventDefault();
+
+            const line = target?.closest<HTMLElement>('[data-line-index]');
+            const row = target?.closest<HTMLElement>('[data-command-index]');
+            const index = line?.dataset.lineIndex
+              ? Number(line.dataset.lineIndex)
+              : row?.dataset.commandIndex
+                ? Number(row.dataset.commandIndex)
+                : commands.length;
+
+            // 右键先把该行所在的最小簇选中，菜单里的操作都以这个簇为准
+            const native = window.getSelection();
+            if (native && !native.isCollapsed) native.removeAllRanges();
+            selectRows(index, index, false);
+            setContextMenu({ x: event.clientX, y: event.clientY, index });
+          }}
         >
           {/* 自绘选区：所有色带合并成一条外轮廓，凸角与凹角都倒圆 */}
           <div className="textSelectionLayer" aria-hidden="true">
@@ -767,6 +877,15 @@ export default function EventPageView({
         system={editTarget ? editTarget.system : insertTarget?.system ?? null}
         onInsert={confirmCommand}
       />
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }
