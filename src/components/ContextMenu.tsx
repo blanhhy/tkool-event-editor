@@ -6,6 +6,8 @@ export interface ContextMenuItem {
   shortcut?: string;
   separatorBefore?: boolean;
   disabled?: boolean;
+  /** 警示项：文字始终用红色（如强制删除） */
+  danger?: boolean;
   onSelect: () => void;
 }
 
@@ -122,6 +124,7 @@ export default function ContextMenu({ x, y, items, onClose, anchorRef, anchored 
             type="button"
             className="menuRow"
             role="menuitem"
+            data-danger={item.danger ? 'true' : undefined}
             disabled={item.disabled}
             onClick={() => {
               item.onSelect();

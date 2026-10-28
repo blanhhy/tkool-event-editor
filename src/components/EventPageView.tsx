@@ -695,6 +695,18 @@ export default function EventPageView({
             onDeleteCommands(selectedIndices);
           },
         },
+        {
+          id: 'force-delete',
+          label: '强制删除',
+          danger: true,
+          // 跳过一切校验，只删右键所在的那一行；没有对应指令（页尾空行）时不可用
+          disabled: contextMenu.index >= commands.length || !onDeleteCommands,
+          onSelect: () => {
+            if (contextMenu.index >= commands.length || !onDeleteCommands) return;
+            pendingSelection.current = { anchor: contextMenu.index, focus: contextMenu.index };
+            onDeleteCommands([contextMenu.index]);
+          },
+        },
       ]
     : [];
 

@@ -419,6 +419,15 @@ button {
   color: #ff8b80;
 }
 
+/* 警示项（如强制删除）：文字始终是红色，悬停加深背景 */
+.menuRow[data-danger='true'] {
+  color: #ff8b80;
+}
+
+.menuRow[data-danger='true']:hover:not(:disabled) {
+  background: var(--color-danger-soft);
+}
+
 .menuDivider {
   height: 1px;
   margin: 6px 2px;

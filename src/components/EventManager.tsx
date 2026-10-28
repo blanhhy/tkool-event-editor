@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   EVENT_CATEGORY_LABELS,
   eventPageDisplayName,
@@ -22,6 +23,21 @@ interface Props {
   loading?: boolean;
   progress?: { done: number; total: number } | null;
   error?: string | null;
+  /** 定位请求：展开目标页上方的路径并滚动到可见范围 */
+  reveal?: { key: string; seq: number } | null;
+}
+
+/** 定位目标是否在指定的事件对象下（key 为 pageKey） */
+function isUnderEvent(key: string | null, event: EventObject, mapId?: number): boolean {
+  if (!key) return false;
+  switch (event.category) {
+    case 'common':
+      return key.startsWith(`common/${event.id}/`);
+    case 'troop':
+      return key.startsWith(`troop/${event.id}/`);
+    case 'map':
+      return key.startsWith(`map/${mapId}/event/${event.id}/`);
+  }
 }
 
 export default function EventManager({
@@ -32,7 +48,36 @@ export default function EventManager({
   loading = false,
   progress = null,
   error = null,
+  reveal = null,
 }: Props) {
+  const treeRef = useRef<HTMLDivElement>(null);
+  const revealKey = reveal?.key ?? null;
+  const revealSeq = reveal?.seq ?? 0;
+
+  useEffect(() => {
+    if (!revealKey) return;
+
+    let frame = 0;
+    let tries = 0;
+    const scrollToRow = () => {
+      const row = treeRef.current?.querySelector<HTMLElement>(
+        `[data-page-key="${revealKey}"]`,
+      );
+      if (row) {
+        row.scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      // 上方路径的展开在子组件的 effect 里完成，等一帧再找目标行
+      if (tries < 10) {
+        tries += 1;
+        frame = requestAnimationFrame(scrollToRow);
+      }
+    };
+    frame = requestAnimationFrame(scrollToRow);
+
+    return () => cancelAnimationFrame(frame);
+  }, [revealKey, revealSeq]);
+
   if (!hasProject) {
     return <div className="treeEmpty">未打开工程</div>;
   }
@@ -46,7 +91,7 @@ export default function EventManager({
   }
 
   return (
-    <div className="tree eventTree" role="tree" aria-label="事件">
+    <div ref={treeRef} className="tree eventTree" role="tree" aria-label="事件">
       {loading && progress && (
         <div className="treeHint">
           {`正在解析地图事件 ${progress.done}/${progress.total}`}
@@ -57,6 +102,7 @@ export default function EventManager({
         icon={<FileTypeIcon icon="folder" size={16} />}
         depth={0}
         count={catalog.commonEvents.length}
+        expandSeq={revealKey?.startsWith('common/') ? revealSeq : undefined}
       >
         {catalog.commonEvents.map((event) => (
           <EventObjectRow
@@ -65,6 +111,7 @@ export default function EventManager({
             depth={1}
             selected={selected}
             onSelectPage={onSelectPage}
+            expandSeq={isUnderEvent(revealKey, event) ? revealSeq : undefined}
           />
         ))}
       </TreeBranch>
@@ -75,6 +122,7 @@ export default function EventManager({
         depth={0}
         count={catalog.maps.length}
         defaultOpen
+        expandSeq={revealKey?.startsWith('map/') ? revealSeq : undefined}
       >
         {catalog.maps.map((map) => (
           <TreeBranch
@@ -83,6 +131,7 @@ export default function EventManager({
             icon={<FileTypeIcon icon="package" size={16} />}
             depth={1}
             count={map.events.length}
+            expandSeq={revealKey?.startsWith(`map/${map.id}/`) ? revealSeq : undefined}
           >
             {map.events.map((event) => (
               <EventObjectRow
@@ -91,6 +140,7 @@ export default function EventManager({
                 depth={2}
                 selected={selected}
                 onSelectPage={onSelectPage}
+                expandSeq={isUnderEvent(revealKey, event, map.id) ? revealSeq : undefined}
               />
             ))}
           </TreeBranch>
@@ -102,6 +152,7 @@ export default function EventManager({
         icon={<FileTypeIcon icon="folder" size={16} />}
         depth={0}
         count={catalog.troops.length}
+        expandSeq={revealKey?.startsWith('troop/') ? revealSeq : undefined}
       >
         {catalog.troops.map((event) => (
           <EventObjectRow
@@ -110,6 +161,7 @@ export default function EventManager({
             depth={1}
             selected={selected}
             onSelectPage={onSelectPage}
+            expandSeq={isUnderEvent(revealKey, event) ? revealSeq : undefined}
           />
         ))}
       </TreeBranch>
@@ -122,11 +174,13 @@ function EventObjectRow({
   depth,
   selected,
   onSelectPage,
+  expandSeq,
 }: {
   event: EventObject;
   depth: number;
   selected: string | null;
   onSelectPage: (page: EventPage, label: string) => void;
+  expandSeq?: number;
 }) {
   // 地图事件用 EV0001 这类编号；名字就是默认名时不再重复显示
   const eventLabel =
@@ -142,6 +196,7 @@ function EventObjectRow({
       icon={<FileTypeIcon icon="object" size={16} />}
       depth={depth}
       count={event.pages.length}
+      expandSeq={expandSeq}
     >
       {event.pages.map((page) => (
         <PageRow
@@ -181,6 +236,7 @@ function PageRow({
       aria-selected={active}
       data-kind="file"
       data-selected={active ? 'true' : undefined}
+      data-page-key={key}
       tabIndex={0}
       style={{ paddingLeft: 6 + depth * 14 }}
       onClick={() => onSelectPage(page, selectLabel)}

@@ -172,6 +172,9 @@ export default function App() {
     seq: number;
   } | null>(null);
   const revealSeqRef = useRef(0);
+  /** 事件管理器定位请求：切到文件侧栏后展开路径并滚动到该页 */
+  const [eventReveal, setEventReveal] = useState<{ key: string; seq: number } | null>(null);
+  const eventRevealSeqRef = useRef(0);
   const [eventsOpen, setEventsOpen] = useState(true);
   const [catalog, setCatalog] = useState<EventCatalog>(emptyCatalog);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -549,6 +552,36 @@ export default function App() {
         length: match.length,
         seq: revealSeqRef.current,
       });
+    },
+    [openEventPage],
+  );
+
+  /** 搜索结果分组标题「打开」：在编辑器中打开并选中该页 */
+  const openSearchPage = useCallback(
+    (group: SearchGroup) => {
+      // 清掉上一次匹配跳转的关键词定位，只打开页本身
+      setRevealTarget(null);
+      openEventPage(
+        { ref: group.ref, index: group.ref.pageIndex + 1, trigger: null },
+        group.name,
+      );
+    },
+    [openEventPage],
+  );
+
+  /** 搜索结果分组标题「定位」：切到文件侧栏，在事件管理器中定位该页后打开 */
+  const revealSearchPage = useCallback(
+    (group: SearchGroup) => {
+      setRevealTarget(null);
+      setSideView('files');
+      setSidePanelOpen(true);
+      setEventsOpen(true);
+      eventRevealSeqRef.current += 1;
+      setEventReveal({ key: pageKey(group.ref), seq: eventRevealSeqRef.current });
+      openEventPage(
+        { ref: group.ref, index: group.ref.pageIndex + 1, trigger: null },
+        group.name,
+      );
     },
     [openEventPage],
   );
@@ -1563,7 +1596,12 @@ export default function App() {
                     (searchGroups.length === 0 ? (
                       <div className="searchHint">未找到结果</div>
                     ) : (
-                      <SearchResults groups={searchGroups} onOpenMatch={openSearchMatch} />
+                      <SearchResults
+                        groups={searchGroups}
+                        onOpenMatch={openSearchMatch}
+                        onOpenPage={openSearchPage}
+                        onRevealPage={revealSearchPage}
+                      />
                     ))}
                 </div>
               </SidePanelSection>
@@ -1646,6 +1684,7 @@ export default function App() {
                   loading={eventsLoading}
                   progress={eventsProgress}
                   error={eventsError}
+                  reveal={eventReveal}
                 />
               </SidePanelSection>
               </>

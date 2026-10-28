@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronIcon } from './icons';
 
 interface Props {
@@ -55,6 +55,7 @@ export function TreeBranch({
   depth,
   count,
   defaultOpen = false,
+  expandSeq,
   children,
 }: {
   label: string;
@@ -62,9 +63,15 @@ export function TreeBranch({
   depth: number;
   count?: number;
   defaultOpen?: boolean;
+  /** 外部要求展开的序号：变化时展开该分支（定位事件页时用） */
+  expandSeq?: number;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    if (expandSeq !== undefined) setOpen(true);
+  }, [expandSeq]);
 
   return (
     <>
