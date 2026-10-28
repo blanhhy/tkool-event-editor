@@ -135,6 +135,8 @@ export default function App() {
   const [encoding, setEncoding] = useState<Encoding>(DEFAULT_ENCODING);
   const [engine, setEngine] = useState<Engine>('2k');
   const [runtime, setRuntime] = useState<Runtime>('rpg_rt');
+  /** 数据库设定的默认 System 图（消息预览兜底用） */
+  const [systemGraphic, setSystemGraphic] = useState('System');
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -242,6 +244,7 @@ export default function App() {
         .then((result) => {
           if (eventsLoadRef.current !== token) return;
           setCatalog(result.catalog);
+          setSystemGraphic(result.systemGraphic);
           options.onResolved?.(result);
         })
         .catch((err: unknown) => {
@@ -369,6 +372,7 @@ export default function App() {
     setEncoding(DEFAULT_ENCODING);
     setEngine('2k');
     setRuntime('rpg_rt');
+    setSystemGraphic('System');
     setPreferredEngine(null);
     setSelected(null);
     setActiveEventPage(null);
@@ -1686,6 +1690,7 @@ export default function App() {
           onCopyCommands={storeCommandClipboard}
           commandEnvironment={commandEnvironment}
           projectRoot={root}
+          systemGraphic={systemGraphic}
           reveal={
             revealTarget && activeTab === revealTarget.path
               ? {

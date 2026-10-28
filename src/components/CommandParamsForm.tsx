@@ -8,7 +8,7 @@ import {
   resolveField,
   type CommandFormModel,
 } from '../lib/commandForm';
-import type { CommandDraft, FaceGraphicState } from '../lib/eventCommands';
+import type { CommandDraft, FaceGraphicState, SystemGraphicState } from '../lib/eventCommands';
 import { MESSAGE_LIMITS, textFitsCommandLimits } from '../lib/eventCommands';
 import {
   COMMAND_DIALOGS,
@@ -30,6 +30,10 @@ interface Props {
   root?: FileSystemDirectoryHandle | null;
   /** 本页上方最近的「更改脸图」指令：显示文字的预览据此渲染脸图 */
   face?: FaceGraphicState | null;
+  /** 本页上方最近的「更改系统图像」指令：显示文字的预览据此渲染窗口 */
+  system?: SystemGraphicState | null;
+  /** 数据库设定的默认 System 图 */
+  systemGraphic?: string;
   /** 编辑态：用原指令的参数与文本回填控件的初始值 */
   initial?: { parameters: number[]; text?: string } | null;
   onCancel: () => void;
@@ -47,6 +51,8 @@ export default function CommandParamsForm({
   engine,
   root,
   face,
+  system,
+  systemGraphic,
   initial,
   onCancel,
   onConfirm,
@@ -195,7 +201,13 @@ export default function CommandParamsForm({
         )}
 
         {code === Cmd.ShowMessage && (
-          <MessagePreview text={text} root={root ?? null} face={face ?? null} />
+          <MessagePreview
+            text={text}
+            root={root ?? null}
+            face={face ?? null}
+            system={system ?? null}
+            systemGraphic={systemGraphic}
+          />
         )}
 
         {model.unknownLayout && !spec && (

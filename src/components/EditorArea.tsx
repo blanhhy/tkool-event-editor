@@ -76,6 +76,8 @@ interface Props {
   commandEnvironment?: CommandEnvironment;
   /** 工程目录：事件指令参数面板的渲染预览需要读取工程素材 */
   projectRoot?: FileSystemDirectoryHandle | null;
+  /** 数据库设定的默认 System 图（消息预览兜底用） */
+  systemGraphic?: string;
   /** 外部跳转到事件页的指定指令行并选中关键词（来自搜索结果） */
   reveal?: { index: number; offset: number; length: number; seq: number } | null;
 }
@@ -101,6 +103,7 @@ export default function EditorArea({
   onEventSelectionChange,
   commandEnvironment,
   projectRoot,
+  systemGraphic,
   reveal,
 }: Props) {
   const active = tabs.find((tab) => tab.path === activeId) ?? null;
@@ -240,6 +243,7 @@ export default function EditorArea({
             onSelectionChange={onEventSelectionChange}
             environment={eventEnvironment}
             projectRoot={projectRoot}
+            systemGraphic={systemGraphic}
             reveal={reveal}
           />
         )}

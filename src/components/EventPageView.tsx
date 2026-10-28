@@ -15,11 +15,13 @@ import {
   buildInsertedCommands,
   findCommandClusters,
   findFaceGraphicBefore,
+  findSystemGraphicBefore,
   groupCommandLines,
   type CommandCluster,
   type CommandDraft,
   type CommandLine,
   type FaceGraphicState,
+  type SystemGraphicState,
   type TextBlockKind,
 } from '../lib/eventCommands';
 import {
@@ -58,6 +60,8 @@ interface Props {
   environment?: CommandEnvironment;
   /** 工程目录：指令参数面板的渲染预览需要读取工程素材 */
   projectRoot?: FileSystemDirectoryHandle | null;
+  /** 数据库设定的默认 System 图（消息预览没有「更改系统图像」时使用） */
+  systemGraphic?: string;
   /** 指令操作接口（复制 / 剪切 / 粘贴） */
   apiRef?: MutableRefObject<EventPageApi | null>;
   /** 选择区变化通知，用于菜单项启用状态 */
@@ -82,6 +86,7 @@ export default function EventPageView({
   onSaveParameters: _onSaveParameters,
   environment,
   projectRoot,
+  systemGraphic,
   apiRef,
   onSelectionChange,
   onReplaceCommands,
@@ -91,7 +96,10 @@ export default function EventPageView({
 }: Props) {
   /** 打开指令选择弹窗时记录的目标位置；null 表示弹窗关闭 */
   const [insertTarget, setInsertTarget] = useState<
-    (Pick<CommandCluster, 'index' | 'indent'> & { face: FaceGraphicState | null }) | null
+    (Pick<CommandCluster, 'index' | 'indent'> & {
+      face: FaceGraphicState | null;
+      system: SystemGraphicState | null;
+    }) | null
   >(null);
   /**
    * 双击编辑的指令簇：start 为整簇在指令数组里的起点，
@@ -103,6 +111,7 @@ export default function EventPageView({
     snapshot: EventCommand[];
     initial: CommandDraft;
     face: FaceGraphicState | null;
+    system: SystemGraphicState | null;
   } | null>(null);
   /**
    * 当前选择：focus 是焦点行（即当前选中的那一行），
@@ -407,6 +416,7 @@ export default function EventPageView({
         index,
         indent,
         face: findFaceGraphicBefore(commands, index),
+        system: findSystemGraphicBefore(commands, index),
       });
     },
     [commands, onReplaceCommands],
@@ -438,6 +448,7 @@ export default function EventPageView({
         initial: buildCommandEditState(snapshot),
         // 消息预览按本页上方最近的「更改脸图」渲染脸图
         face: findFaceGraphicBefore(commands, start),
+        system: findSystemGraphicBefore(commands, start),
       });
     },
     [clusters, commands, onReplaceCommands],
@@ -750,8 +761,10 @@ export default function EventPageView({
         }}
         environment={environment}
         projectRoot={projectRoot}
+        systemGraphic={systemGraphic}
         editing={editTarget?.initial ?? null}
         face={editTarget ? editTarget.face : insertTarget?.face ?? null}
+        system={editTarget ? editTarget.system : insertTarget?.system ?? null}
         onInsert={confirmCommand}
       />
     </div>

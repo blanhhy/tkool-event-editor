@@ -554,6 +554,31 @@ export function findFaceGraphicBefore(
   return null;
 }
 
+/** 消息预览用的 System 图状态：本页上方最近的「更改系统图像」指令 */
+export interface SystemGraphicState {
+  /** System 图文件名（System 目录下，不含扩展名） */
+  name: string;
+}
+
+/**
+ * 找 before 之前最近的一条「更改系统图像」指令。
+ * 正常情况下文件名不会为空；若遇到空名（错误数据），按 EasyRPG Player 的处理
+ * （Game_System::GetSystemName：graphics_name 为空时退回数据库的 system_name）
+ * 返回 null，表示使用数据库里的默认 System 图。
+ */
+export function findSystemGraphicBefore(
+  lines: CommandLine[],
+  before: number,
+): SystemGraphicState | null {
+  for (let index = Math.min(before, lines.length) - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (line.code !== Cmd.ChangeSystemGraphics) continue;
+    const name = line.text?.trim();
+    return name ? { name } : null;
+  }
+  return null;
+}
+
 /** 打开子代码块的指令 → 它需要的闭合符 */
 const INSERT_BLOCK_CLOSERS: Record<number, number> = {
   [Cmd.ConditionalBranch]: Cmd.EndBranch,

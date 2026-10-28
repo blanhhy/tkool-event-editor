@@ -24,6 +24,8 @@ export interface EventCatalogResult {
   engine: Engine;
   /** 扫描工程内指令后发现的运行环境（配置存在时由调用方决定是否采用） */
   runtime: Runtime;
+  /** 数据库里定义的默认 System 图文件名（不含扩展名） */
+  systemGraphic: string;
 }
 
 const MAP_FILE = /^Map(\d+)\.lmu$/i;
@@ -271,7 +273,13 @@ export async function loadEventCatalog(
   }
 
   options.onUpdate?.({ ...catalog, maps: [...catalog.maps] });
-  return { catalog, engine, runtime: detectRuntime(commandCodes) };
+  return {
+    catalog,
+    engine,
+    runtime: detectRuntime(commandCodes),
+    // 消息预览默认用数据库设定的系统图（老工程可能是空串，退回 System）
+    systemGraphic: db.system?.systemName?.trim() || 'System',
+  };
 }
 
 interface CachedDatabase {

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buildCommandPages, splitCommandColumns, type CommandEntry } from '../lib/commandCatalog';
 import type { CommandEnvironment } from '../lib/commandSpec';
-import type { CommandDraft, FaceGraphicState } from '../lib/eventCommands';
+import type { CommandDraft, FaceGraphicState, SystemGraphicState } from '../lib/eventCommands';
 import CommandParamsForm from './CommandParamsForm';
 
 /** 条目高度与间距，用于把面板撑到「堆满一列指令」的高度 */
@@ -21,6 +21,10 @@ interface Props {
   editing?: CommandDraft | null;
   /** 本页上方最近的「更改脸图」指令：显示文字的预览据此渲染脸图 */
   face?: FaceGraphicState | null;
+  /** 本页上方最近的「更改系统图像」指令：显示文字的预览据此渲染窗口 */
+  system?: SystemGraphicState | null;
+  /** 数据库设定的默认 System 图 */
+  systemGraphic?: string;
   /** 参数表单点「确定」：把配置好的指令交给事件页插入 */
   onInsert?: (draft: CommandDraft) => void;
 }
@@ -38,6 +42,8 @@ export default function CommandPicker({
   projectRoot,
   editing,
   face,
+  system,
+  systemGraphic,
   onInsert,
 }: Props) {
   const [activePage, setActivePage] = useState(0);
@@ -187,6 +193,8 @@ export default function CommandPicker({
                 engine={engine}
                 root={projectRoot}
                 face={face}
+                system={system}
+                systemGraphic={systemGraphic}
                 initial={
                   editing && selected.code === editing.code
                     ? { parameters: editing.parameters, text: editing.text }

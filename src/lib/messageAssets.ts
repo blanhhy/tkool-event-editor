@@ -3,7 +3,8 @@ import type { FaceGraphicState } from './eventCommands';
 import { resolveFile } from './file';
 import { bundledRtp, type RtpSource } from './rtp';
 
-const SYSTEM_PATH = 'System/System.png';
+const SYSTEM_DIR = 'System';
+const DEFAULT_SYSTEM = 'System';
 
 /** System 图 + 抠透明色 */
 export interface MessageSystemAssets {
@@ -24,7 +25,8 @@ export interface MessageFaceAssets extends FaceGraphicState {
  * 预览组件只依赖这个接口，以后换成 RMM 的素材库时不用改组件。
  */
 export interface MessageAssetProvider {
-  loadSystem(): Promise<MessageSystemAssets | null>;
+  /** name 为 System 目录下的文件名（不含扩展名）；缺省用 System */
+  loadSystem(name?: string): Promise<MessageSystemAssets | null>;
   loadFace(name: string): Promise<LoadedImage | null>;
   /** ExFont 只影响 $A-$z 字形，加载失败不影响其它渲染 */
   ensureExFont(): void;
@@ -48,15 +50,21 @@ function createProvider(
   root: FileSystemDirectoryHandle | null,
   rtp: RtpSource,
 ): MessageAssetProvider {
-  let systemPromise: Promise<MessageSystemAssets | null> | undefined;
+  const systemPromises = new Map<string, Promise<MessageSystemAssets | null>>();
   const facePromises = new Map<string, Promise<LoadedImage | null>>();
   let exfontRequested = false;
 
-  const loadSystem = () => {
-    systemPromise ??= (async () => {
+  const loadSystem = (name?: string) => {
+    const fileName = /\.(png|bmp)$/i.test(name ?? '')
+      ? (name as string)
+      : `${name || DEFAULT_SYSTEM}.png`;
+    const cached = systemPromises.get(fileName);
+    if (cached) return cached;
+
+    const task = (async (): Promise<MessageSystemAssets | null> => {
       if (root) {
         try {
-          const file = await resolveFile(root, SYSTEM_PATH);
+          const file = await resolveFile(root, `${SYSTEM_DIR}/${fileName}`);
           // 透明色必须从原始字节里读调色板：解码后的位图已经不保留调色板信息
           const bytes = new Uint8Array(await file.arrayBuffer());
           return {
@@ -65,11 +73,14 @@ function createProvider(
             source: 'project' as const,
           };
         } catch {
-          // 工程里没有 System 图：回退到 RTP
+          // 工程里没有这张 System 图：回退到 RTP
         }
       }
 
-      if (!rtp.systemUrl) return null;
+      // 内置 RTP 只带标准的 System.png，其它文件名没有兜底素材
+      if (!rtp.systemUrl || fileName.toLowerCase() !== `${DEFAULT_SYSTEM}.png`.toLowerCase()) {
+        return null;
+      }
       const loaded = await loadFromUrl(rtp.systemUrl);
       if (!loaded) return null;
       return {
@@ -78,7 +89,9 @@ function createProvider(
         source: 'rtp' as const,
       };
     })();
-    return systemPromise;
+
+    systemPromises.set(fileName, task);
+    return task;
   };
 
   const loadFace = (name: string) => {
