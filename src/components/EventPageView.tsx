@@ -398,6 +398,20 @@ export default function EventPageView({
     [insertTarget, onReplaceCommands],
   );
 
+  /** 双击 @> 或末尾空行：在该行之前打开插入面板 */
+  const beginInsertAt = useCallback(
+    (index: number, indent: number) => {
+      if (!onReplaceCommands) return;
+      setEditTarget(null);
+      setInsertTarget({
+        index,
+        indent,
+        face: findFaceGraphicBefore(commands, index),
+      });
+    },
+    [commands, onReplaceCommands],
+  );
+
   /** 双击某行：把该行所属的最小簇整簇交给编辑面板（快照含子代码块与闭合符） */
   const editClusterAt = useCallback(
     (lineIndex: number) => {
@@ -680,6 +694,7 @@ export default function EventPageView({
                 diagnostics={diagnosticsByIndex.get(row.line.index)}
                 {...rowProps}
                 onEdit={editClusterAt}
+                onInsertAt={beginInsertAt}
               />
             );
           })}
@@ -707,6 +722,7 @@ export default function EventPageView({
             }
             data-focused={selection?.focus === commands.length ? 'true' : undefined}
             onClick={() => selectRows(commands.length, commands.length, false)}
+            onDoubleClick={() => beginInsertAt(commands.length, 0)}
           >
             <span className="commandIndex">{commands.length + 1}</span>
             {/* 末尾行也留出内容区，使高亮同样不跨越行号栏 */}
@@ -719,11 +735,7 @@ export default function EventPageView({
               top={selection.top}
               onInsert={() => {
                 const index = clusters.get(selection.focus)?.index ?? selection.focus;
-                setInsertTarget({
-                  index,
-                  indent: clusters.get(selection.focus)?.indent ?? 0,
-                  face: findFaceGraphicBefore(commands, index),
-                });
+                beginInsertAt(index, clusters.get(selection.focus)?.indent ?? 0);
               }}
             />
           )}
@@ -751,6 +763,7 @@ function CommandRow({
   diagnostics,
   onSelect,
   onEdit,
+  onInsertAt,
   active,
   activeStart,
   activeEnd,
@@ -761,6 +774,8 @@ function CommandRow({
   onSelect?: (lineIndex: number) => void;
   /** 双击编辑该行所属的指令簇 */
   onEdit?: (lineIndex: number) => void;
+  /** 双击 @> 空位时改为在该行之前插入 */
+  onInsertAt?: (lineIndex: number, indent: number) => void;
   active?: boolean;
   activeStart?: boolean;
   activeEnd?: boolean;
@@ -780,7 +795,11 @@ function CommandRow({
       data-round-bottom={activeEnd ? 'true' : undefined}
       data-focused={focusIndex === line.index ? 'true' : undefined}
       onClick={() => onSelect?.(line.index)}
-      onDoubleClick={() => onEdit?.(line.index)}
+      onDoubleClick={() => {
+        // @> 空位没有可编辑的参数，双击直接打开插入
+        if (isEmptySlot) onInsertAt?.(line.index, line.indent);
+        else onEdit?.(line.index);
+      }}
     >
       <span className="commandIndex">{line.index + 1}</span>
       <div
