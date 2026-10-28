@@ -1407,13 +1407,60 @@ button {
 .commandContent {
   flex: 1;
   min-width: 0;
+  /* 缩进线的定位参照 */
+  position: relative;
   /* 一条指令固定一行：不按宽度折行，超宽时整行横向滚动 */
   white-space: pre;
 }
 
-/* 缩进用真实空格表示（每层 2 个），与文本编辑器一致，可随整行一起划选 */
+/* 缩进用真实空格表示（每层 4 个），与文本编辑器一致，可随整行一起划选 */
 .commandIndent {
   white-space: pre;
+}
+
+/*
+ * 彩虹缩进线：覆盖在行内容之上的一层装饰，不参与排版、不影响划选。
+ * 每一层的线画在该层起点（每 4 个半角空格一处），最深处那一层紧挨行首文字，
+ * 因此不画——保证左侧全空、右侧与文字之间仍留有空列。
+ */
+.indentGuides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.indentGuide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  opacity: 0.5;
+  background: currentColor;
+}
+
+.indentGuide[data-level='0'] {
+  color: #e06c75;
+}
+
+.indentGuide[data-level='1'] {
+  color: #e5c07b;
+}
+
+.indentGuide[data-level='2'] {
+  color: #98c379;
+}
+
+.indentGuide[data-level='3'] {
+  color: #56b6c2;
+}
+
+.indentGuide[data-level='4'] {
+  color: #61afef;
+}
+
+.indentGuide[data-level='5'] {
+  color: #c678dd;
 }
 
 /*
@@ -1562,6 +1609,8 @@ button {
 
 .commentLine {
   display: block;
+  /* 缩进线的定位参照 */
+  position: relative;
   /* 文本块按纯文本排版，划选时不会在片段之间插入换行 */
   white-space: pre;
 }
@@ -1573,6 +1622,11 @@ button {
   /* 绘制在焦点行色带之上 */
   position: relative;
   z-index: 1;
+}
+
+/* 文本域里的续行从自己的左缘起排，缩进线会压到正文上，编辑态不画 */
+.commentEditLine .indentGuides {
+  display: none;
 }
 
 .commentText {
@@ -1667,6 +1721,8 @@ button {
 
 .messageLine {
   display: block;
+  /* 缩进线的定位参照 */
+  position: relative;
   /* 文本块按纯文本排版，划选时不会在片段之间插入换行 */
   white-space: pre;
 }
