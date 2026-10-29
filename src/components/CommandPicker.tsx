@@ -95,8 +95,9 @@ export default function CommandPicker({
     return null;
   }, [editing, pages]);
 
-  // 每次打开都回到第一页，并清掉上一次选中的指令；编辑态直接选中原指令
-  useEffect(() => {
+  // 每次打开都回到第一页，并清掉上一次选中的指令；编辑态直接选中原指令。
+  // 必须在绘制前完成，否则会先闪一下上一次打开时的页签与参数面板。
+  useLayoutEffect(() => {
     if (!open) return;
     if (editEntry) {
       setActivePage(editEntry.page);
