@@ -1,4 +1,8 @@
-import { DEFAULT_CONFIG, type MessageWindowConfig } from '@mywin/rm200x-renderer';
+import {
+  DEFAULT_CONFIG,
+  createSingleFaceSlots,
+  type MessageWindowConfig,
+} from '@mywin/rm200x-renderer';
 import type { MessageFaceAssets, MessageSystemAssets } from './messageAssets';
 
 /**
@@ -15,16 +19,21 @@ export function buildMessageConfig(
     image: assets?.image ?? null,
     transparentColor: assets?.transparentColor ?? '#000000',
   };
+  // RPG 运行时只有单一脸图：把「更改脸图」指令映射到左侧或右侧槽位
+  const { faceLeft, faceRight } = createSingleFaceSlots({
+    position: face?.atRight ? 'right' : 'left',
+    faceSet: { name: face?.name ?? null, image: face?.image ?? null },
+    faceIndex: face?.index ?? 0,
+    flipX: face?.flipped ?? false,
+    enabled: Boolean(face?.image),
+  });
   return {
     ...DEFAULT_CONFIG,
     text,
     backgroundMode: assets ? 'system' : 'transparent',
     backgroundSystem: system,
     colorSystem: system,
-    faceMode: face?.image ? 'face' : 'none',
-    faceSet: { name: face?.name ?? null, image: face?.image ?? null },
-    faceIndex: face?.index ?? 0,
-    facePosition: face?.atRight ? 'right' : 'left',
-    faceFlipX: face?.flipped ?? false,
+    faceLeft,
+    faceRight,
   };
 }
